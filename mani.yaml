@@ -1,0 +1,38 @@
+{
+  "projects": {
+    "pipesor-frontend": {
+      "path": "../pipesor-frontend",
+      "url": "https://github.com/pipesor-org/pipesor-frontend.git",
+      "tags": [
+        "frontend"
+      ]
+    },
+    "pipesor-iac": {
+      "path": "../pipesor-iac",
+      "url": "https://github.com/pipesor-org/pipesor-iac.git",
+      "tags": [
+        "infra"
+      ]
+    },
+    "pipesor-landing": {
+      "path": "../pipesor-landing",
+      "url": "https://github.com/pipesor-org/pipesor-landing.git",
+      "tags": [
+        "frontend"
+      ]
+    },
+    ".github": {
+      "path": "../.github",
+      "url": "https://github.com/pipesor-org/.github.git",
+      "tags": [
+        "policy"
+      ]
+    }
+  },
+  "tasks": {
+    "status": {
+      "cmd": "git status --short --branch",
+      "desc": "Inspect local checkout state"
+    }
+  }
+}

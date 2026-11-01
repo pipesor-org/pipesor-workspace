@@ -1,0 +1,3 @@
+# Optional public documentation integration, for this trusted project only.
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"

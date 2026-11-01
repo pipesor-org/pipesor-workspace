@@ -1,0 +1,28 @@
+{
+  "folders": [
+    {
+      "name": "Workspace",
+      "path": "."
+    },
+    {
+      "name": "pipesor-frontend",
+      "path": "../pipesor-frontend"
+    },
+    {
+      "name": "pipesor-iac",
+      "path": "../pipesor-iac"
+    },
+    {
+      "name": "pipesor-landing",
+      "path": "../pipesor-landing"
+    },
+    {
+      "name": ".github",
+      "path": "../.github"
+    },
+    {
+      "name": "Services",
+      "path": "../services"
+    }
+  ]
+}
