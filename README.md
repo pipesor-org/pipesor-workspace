@@ -4,22 +4,31 @@ Development tooling for sibling Pipesor repositories. Each repository keeps its 
 Git history, reviews, hooks and releases. This workspace updates local checkouts;
 it does not deploy environments or establish a compatible release across services.
 
-## Onboarding
+## Current scope
+
+The inventory currently covers `pipesor-frontend`, `pipesor-iac`,
+`pipesor-landing` and `.github`. It does not include this workspace repository
+or `pipesor-docs`. Microservices must be added explicitly before they can be
+inspected or synchronized.
+
+## Requirements and setup
 
 Place this checkout beside `pipesor-frontend`, `pipesor-iac`, `pipesor-landing`,
-`.github`, and `services/`. Install Python 3.10+, Git, GitHub CLI, and
-[Mani 0.32.1](https://github.com/alajmo/mani/releases/tag/v0.32.1).
+`.github`, and `services/`. Install Python 3.10+, Git and GitHub CLI.
 Authenticate with `gh auth login` using an account with access to the private repos.
+Use [Mani 0.32.1](https://github.com/alajmo/mani/releases/tag/v0.32.1)
+when you need to clone missing inventory repositories or run Mani tasks. If
+installed in the parent workspace's `.tools/bin`, add that directory to `PATH`
+or invoke `../.tools/bin/mani` from this repository.
 
 ```sh
-cd pipesor-workspace
-python3 tools/workspace.py doctor
-mani sync
 python3 tools/workspace.py status
 ```
 
-`mani sync` clones missing repositories. Review the manifest before cloning.
-It does not update existing main branches. `mani.yaml` uses JSON syntax, which is
+Run commands from this repository's root. `mani sync` clones missing repositories;
+review the manifest before cloning. `mani run status --all` runs the inventory's grouped
+Git status task. Both commands require Mani on `PATH`.
+`mani sync` does not update existing main branches. `mani.yaml` uses JSON syntax, which is
 valid YAML, so the Python utility reads the same inventory without extra packages.
 [Mani configuration](https://manicli.com/config/) defines paths relative to this file.
 The checked-in VS Code workspace opens the sibling repositories and `services/`.
@@ -33,17 +42,20 @@ bun run setup:hooks
 bun run test
 ```
 
-Doctor reports executable availability, GitHub authentication and GitHub API connectivity. It does not
-install software, change global configuration or prove access to every repo.
-Bun and Lefthook are needed for contributing; inspection/sync use Python, Git, gh.
+Run `python3 tools/workspace.py doctor` to check tool availability, GitHub
+authentication and API connectivity. The current doctor checks Git, gh, Mani,
+Python, Bun, Lefthook and Codex and exits with an error if any is missing. Mani,
+Bun, Lefthook and Codex are not required by the Python `status` and `sync`
+commands themselves. Doctor does not install software, change global configuration
+or prove access to every repository.
 
 ## Synchronize and clean
 
 ```sh
 python3 tools/workspace.py sync                        # preview
-python3 tools/workspace.py sync --project pipesor-iac  # one repo
-python3 tools/workspace.py sync --apply                # explicit local changes
-mani run status                                      # grouped Git inspection
+python3 tools/workspace.py sync --project pipesor-iac  # preview one repo
+python3 tools/workspace.py sync --apply                # apply local changes
+python3 tools/workspace.py status                      # inspect local status
 ```
 
 Preview fetches and prunes origin's remote-tracking refs to obtain current evidence;
@@ -68,7 +80,17 @@ GitHub availability is required for cleanup. Fetch failure or insufficient evide
 keeps branches. A merged PR proves integration, not semantic equivalence after
 conflict resolution or a later revert. Main CI is a separate quality signal.
 
-`pipesor-docs` is deliberately outside the inventory: its external upstream and
+This workspace repository is not in the inventory and does not synchronize itself.
+To update it separately, first inspect `git status` and ensure that switching
+branches will not discard or overwrite your work, then run:
+
+```sh
+git switch main
+git pull --ff-only
+```
+
+These commands do not clean up the workspace's local branches. `pipesor-docs` is
+deliberately outside the inventory: its external upstream and
 existing work need a separate policy. To enroll a real microservice, add an explicit
 project with path `../services/<repository>`, its Pipesor HTTPS URL and a `services`
 tag. This requires a reviewed manifest change; directory discovery is not automatic.
