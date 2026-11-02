@@ -122,3 +122,19 @@ class SyncTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'GitHub unavailable'):
                 w.sync(self.path, self.url, True)
         self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
+
+
+class DoctorTests(unittest.TestCase):
+    def test_github_api_failure_makes_doctor_fail(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        def fake_run(path, *args):
+            if args[:2] == ('gh', 'api'):
+                raise RuntimeError('network blocked')
+            return ''
+
+        output = StringIO()
+        with patch.object(w.sys, 'argv', ['workspace.py', 'doctor']), patch.object(w.shutil, 'which', return_value='/bin/tool'), patch.object(w, 'run', side_effect=fake_run), redirect_stdout(output):
+            self.assertEqual(w.main(), 1)
+        self.assertIn('network blocked', output.getvalue())
