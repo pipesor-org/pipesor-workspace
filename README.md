@@ -33,7 +33,7 @@ bun run setup:hooks
 bun run test
 ```
 
-Doctor reports executable availability and GitHub authentication. It does not
+Doctor reports executable availability, GitHub authentication and GitHub API connectivity. It does not
 install software, change global configuration or prove access to every repo.
 Bun and Lefthook are needed for contributing; inspection/sync use Python, Git, gh.
 

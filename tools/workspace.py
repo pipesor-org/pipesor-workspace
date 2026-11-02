@@ -121,15 +121,17 @@ def main():
         parser.error('--apply is only valid for sync')
     if args.command == 'doctor':
         missing = False
-        for tool in ('git', 'gh', 'mani', 'python3', 'bun', 'lefthook'):
+        for tool in ('git', 'gh', 'mani', 'python3', 'bun', 'lefthook', 'codex'):
             location = shutil.which(tool)
             print(f'{tool}: {location or "MISSING"}')
             missing |= location is None
         try:
             run(ROOT, 'gh', 'auth', 'status')
             print('GitHub authentication: OK (repository permissions checked during sync)')
+            run(ROOT, 'gh', 'api', 'user', '--silent')
+            print('GitHub API connectivity: OK')
         except (RuntimeError, OSError) as error:
-            print(f'GitHub authentication: {error}')
+            print(f'GitHub authentication or API connectivity: {error}')
             missing = True
         return int(missing)
     selected = list(projects(ROOT / 'mani.yaml'))
