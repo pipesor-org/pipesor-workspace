@@ -27,6 +27,13 @@
       "tags": [
         "policy"
       ]
+    },
+    "pipesor-docs": {
+      "path": "../pipesor-docs",
+      "url": "https://github.com/pipesor-org/pipesor-docs.git",
+      "tags": [
+        "docs"
+      ]
     }
   },
   "tasks": {
