@@ -51,6 +51,10 @@ or prove access to every repository.
 
 ## Synchronize and clean
 
+Preview sync before starting work from `main` or after a PR merges when you want
+your local checkout to include the latest changes. Use the preview, rather than
+local-only status, to see whether `main` is behind the current remote.
+
 ```sh
 python3 tools/workspace.py sync                        # preview
 python3 tools/workspace.py sync --project pipesor-iac  # preview one repo
@@ -58,6 +62,8 @@ python3 tools/workspace.py sync --apply                # apply local changes
 python3 tools/workspace.py status                      # inspect local status
 ```
 
+Review the preview before applying it: apply can switch a checkout to `main`,
+fast-forward it and delete the merged local branches listed in the preview.
 Preview fetches and prunes origin's remote-tracking refs to obtain current evidence;
 it leaves local branches and working files unchanged. Status is local-only and may
 show stale tracking refs until fetched. An error/skip produces a nonzero exit code,
@@ -71,6 +77,14 @@ main in the same repository, exact local branch/head SHA equality, and the squas
 commit reachable from the fetched main. Worktree branches are preserved. An active
 branch without that evidence blocks checkout changes for that repo. Unknown
 branches, docs/ and exceptional hotfix branches remain for manual review.
+
+If a repository is skipped for uncommitted or untracked work, inspect it with
+`git -C ../<repository> status` and decide how to preserve that work before
+retrying. If the active branch has no verified merged PR, inspect its commits and
+PR status first. The PR may still be open or unmerged, the local branch may have
+extra commits, or the required merge evidence may be unavailable. Keep the branch
+until its work and merge status are understood; then rerun the preview. A skip in
+one repository does not prevent the others from being inspected or applied.
 
 Deletion prints the branch SHA and PR number. Expected-SHA ref deletion rejects a
 branch modified since inspection. Run while the selected repositories are idle;
