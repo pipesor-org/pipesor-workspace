@@ -7,14 +7,14 @@ it does not deploy environments or establish a compatible release across service
 ## Current scope
 
 The inventory currently covers `pipesor-frontend`, `pipesor-iac`,
-`pipesor-landing` and `.github`. It does not include this workspace repository
-or `pipesor-docs`. Microservices must be added explicitly before they can be
+`pipesor-landing`, `pipesor-docs` and `.github`. It does not include this
+workspace repository. Microservices must be added explicitly before they can be
 inspected or synchronized.
 
 ## Requirements and setup
 
 Place this checkout beside `pipesor-frontend`, `pipesor-iac`, `pipesor-landing`,
-`.github`, and `services/`. Install Python 3.10+, Git and GitHub CLI.
+`pipesor-docs`, `.github`, and `services/`. Install Python 3.10+, Git and GitHub CLI.
 Authenticate with `gh auth login` using an account with access to the private repos.
 Use [Mani 0.32.1](https://github.com/alajmo/mani/releases/tag/v0.32.1)
 when you need to clone missing inventory repositories or run Mani tasks. If
@@ -103,9 +103,7 @@ git switch main
 git pull --ff-only
 ```
 
-These commands do not clean up the workspace's local branches. `pipesor-docs` is
-deliberately outside the inventory: its external upstream and
-existing work need a separate policy. To enroll a real microservice, add an explicit
+These commands do not clean up the workspace's local branches. To enroll a real microservice, add an explicit
 project with path `../services/<repository>`, its Pipesor HTTPS URL and a `services`
 tag. This requires a reviewed manifest change; directory discovery is not automatic.
 
