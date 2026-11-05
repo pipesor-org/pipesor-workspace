@@ -45,7 +45,7 @@ def ancestor(path, first, second):
 
 
 def sync(path, url, apply=False):
-    if Path(git(path, 'rev-parse', '--show-toplevel')).resolve() != path:
+    if not Path(git(path, 'rev-parse', '--show-toplevel')).samefile(path):
         raise RuntimeError('Path is not the root of a standalone checkout')
     if git(path, 'remote', 'get-url', 'origin') != url:
         raise RuntimeError('origin does not match the inventory')
