@@ -86,6 +86,12 @@ Bun, Lefthook and Codex are not required by the Python `status` and `sync`
 commands themselves. Doctor does not install software, change global configuration
 or prove access to every repository.
 
+Doctor separates core tools, additional tools (with their purpose), and GitHub
+authentication/API checks, then reports an overall result. A missing additional
+tool still makes doctor exit nonzero, but does not prevent running Python
+status/sync when their own requirements are available. Install missing tools in
+the environment you are using (WSL/Linux or native Windows).
+
 ## Synchronize and clean
 
 Preview sync before starting work from `main` or after a PR merges when you want
@@ -111,6 +117,14 @@ working trees, clean working trees on main, and unavailable repositories, in tha
 order. Each group shows its repository count, branch/tracking information and
 changed files. Clean describes only the working tree: it does not prove that a
 branch is synchronized with GitHub. `--project` limits the report to one repository.
+
+Sync labels preview versus apply at the start. Preview uses “Would switch/update/
+delete”; apply reports actions only after they succeed. Each run ends with counts
+of repositories with planned/completed changes, unchanged repositories, and
+skipped/failed repositories. A failed apply can be partial: completed actions stay
+in place and are listed above the failure; there is no automatic rollback. Inspect
+the repository and resolve the reported reason before retrying. Review preview
+before using `--apply`, retaining the same `--project` selection when applicable.
 
 Each checkout must have the exact inventory origin URL, a normal branch fetch
 refspec, no pending Git operation and no uncommitted/untracked changes. Local main

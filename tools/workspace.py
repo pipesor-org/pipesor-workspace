@@ -90,25 +90,37 @@ def sync(path, url, apply=False):
                 break
     if active != 'main' and active not in {branch for branch, _, _ in deletions}:
         raise RuntimeError('Active branch has no verified merged PR; repository skipped')
-    print(f'  main: {main[:8]} -> {target[:8]}')
-    for branch, sha, number in deletions:
-        print(f'  delete {branch} at {sha} (merged PR #{number})')
+    changed = main != target or active != 'main' or bool(deletions)
+    if not changed:
+        print('  Unchanged: already on main at the fetched remote commit.')
+    if not apply:
+        if active != 'main':
+            print(f'  Would switch {active} -> main')
+        if main != target:
+            print(f'  Would update main: {main[:8]} -> {target[:8]} (fast-forward)')
+        for branch, sha, number in deletions:
+            print(f'  Would delete {branch} at {sha} (verified merged PR #{number})')
     if apply:
         if git(path, 'status', '--porcelain') or git(path, 'rev-parse', 'refs/heads/main') != main:
             raise RuntimeError('Local state changed during inspection')
         git(path, 'switch', 'main')
+        if active != 'main':
+            print(f'  Switched {active} -> main', flush=True)
         git(path, 'merge', '--ff-only', target)
-        for branch, sha, _ in deletions:
+        if main != target:
+            print(f'  Updated main: {main[:8]} -> {target[:8]}', flush=True)
+        for branch, sha, number in deletions:
             if 'branch refs/heads/' + branch in git(path, 'worktree', 'list', '--porcelain').splitlines():
                 raise RuntimeError('Branch is now in use by a worktree; cleanup stopped')
             # Expected old SHA prevents deleting a branch changed after inspection.
             git(path, 'update-ref', '-d', 'refs/heads/' + branch, sha)
+            print(f'  Deleted {branch} at {sha} (verified merged PR #{number})', flush=True)
             config = subprocess.run(['git', 'config', '--local', '--get-regexp', '^branch[.]'], cwd=path, text=True, capture_output=True)
             if config.returncode not in (0, 1):
                 raise RuntimeError('Unable to inspect branch tracking configuration')
             if any(line.startswith('branch.' + branch + '.') for line in config.stdout.splitlines()):
                 git(path, 'config', '--local', '--remove-section', 'branch.' + branch)
-    return target
+    return changed
 
 
 def status(selected):
@@ -151,19 +163,32 @@ def main():
         parser.error('--apply is only valid for sync')
     if args.command == 'doctor':
         missing = False
-        print(f'python: {sys.executable}')
-        for tool in ('git', 'gh', 'mani', 'bun', 'lefthook', 'codex'):
-            location = shutil.which(tool)
-            print(f'{tool}: {location or "MISSING"}')
-            missing |= location is None
-        try:
-            run(ROOT, 'gh', 'auth', 'status')
-            print('GitHub authentication: OK (repository permissions checked during sync)')
-            run(ROOT, 'gh', 'api', 'user', '--silent')
-            print('GitHub API connectivity: OK')
-        except (RuntimeError, OSError) as error:
-            print(f'GitHub authentication or API connectivity: {error}')
-            missing = True
+        print('Workspace doctor: tool availability and GitHub access')
+        print(f'\nCore tools (status/sync)\n  Python: {sys.executable}')
+        for heading, tools in (
+            ('', (('git', 'local status and synchronization'), ('gh', 'GitHub merge evidence'))),
+            ('Additional tools', (('mani', 'clone inventory / Mani tasks'),
+                                  ('bun', 'contributor checks'), ('lefthook', 'commit hooks'),
+                                  ('codex', 'coding assistant')))):
+            if heading:
+                print(f'\n{heading}')
+            for tool, purpose in tools:
+                location = shutil.which(tool)
+                print(f'  {tool}: {location or "MISSING"} ({purpose})')
+                missing |= location is None
+        print('\nGitHub access')
+        for label, command in (('Authentication', ('gh', 'auth', 'status')),
+                               ('API connectivity', ('gh', 'api', 'user', '--silent'))):
+            try:
+                run(ROOT, *command)
+                print(f'  {label}: OK')
+            except (RuntimeError, OSError) as error:
+                print(f'  {label}: FAILED: {error}')
+                missing = True
+        print('\nResult: ' + ('INCOMPLETE — resolve missing tools or failed checks above.' if missing
+                              else 'All tool and GitHub checks passed.'))
+        print('Additional tools are not required by Python status/sync. Install tools in your active environment.')
+        print('For authentication failures, run gh auth login. Repository permissions are checked during sync.')
         return int(missing)
     selected = list(projects(ROOT / 'mani.yaml'))
     if args.project:
@@ -172,14 +197,29 @@ def main():
             parser.error('unknown project')
     if args.command == 'status':
         return status(selected)
+    print('Sync apply — verified local changes will be applied.' if args.apply else
+          'Sync preview — local branches and files will not change.')
+    print('Fetches and prunes remote-tracking refs. Checks each repository independently.\n')
     failures = 0
+    changed = 0
+    unchanged = 0
     for name, path, url in selected:
         print(name, flush=True)
         try:
-            sync(path, url, args.apply)
+            if sync(path, url, args.apply):
+                changed += 1
+            else:
+                unchanged += 1
         except (RuntimeError, OSError, ValueError) as error:
-            print(f'  SKIPPED: {error}')
+            print(f'  SKIPPED/FAILED: {error}')
+            print(f'  Inspect with git -C "{path}" status; preserve work and resolve the reason before retrying.')
+            if args.apply:
+                print('  Apply may be partial: completed actions above remain; nothing was rolled back.')
             failures += 1
+    action = 'changed' if args.apply else 'with planned changes'
+    print(f'\n{len(selected)} repositories: {changed} {action}, {unchanged} unchanged, {failures} skipped/failed.')
+    if not args.apply and changed:
+        print('Review the plan, then rerun sync with --apply (and the same --project filter, if used).')
     return int(bool(failures))
 
 
