@@ -106,6 +106,12 @@ it leaves local branches and working files unchanged. Status is local-only and m
 show stale tracking refs until fetched. An error/skip produces a nonzero exit code,
 while other inventory repos are still inspected. Apply is not a cross-repo transaction.
 
+Status groups repositories by uncommitted changes, other branches with clean
+working trees, clean working trees on main, and unavailable repositories, in that
+order. Each group shows its repository count, branch/tracking information and
+changed files. Clean describes only the working tree: it does not prove that a
+branch is synchronized with GitHub. `--project` limits the report to one repository.
+
 Each checkout must have the exact inventory origin URL, a normal branch fetch
 refspec, no pending Git operation and no uncommitted/untracked changes. Local main
 must be an ancestor of the fetched origin/main; updates use fast-forward only.

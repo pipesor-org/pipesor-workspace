@@ -4,6 +4,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('workspace', Path(__file__).parents[1] / 'tools/workspace.py')
@@ -132,6 +134,40 @@ class SyncTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'GitHub unavailable'):
                 w.sync(self.path, self.url, True)
         self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
+
+
+class StatusTests(unittest.TestCase):
+    def test_groups_changes_branches_main_and_failures(self):
+        selected = [(name, Path(name), '') for name in ('main', 'feature', 'dirty', 'missing')]
+        output = StringIO()
+        with patch.object(w, 'git', side_effect=[
+            '## main...origin/main [behind 2]',
+            '## feature/example',
+            '## feature/docs\n M tracked.md\n?? new.md',
+            OSError('checkout missing'),
+        ]) as git, redirect_stdout(output):
+            self.assertEqual(w.status(selected), 1)
+        report = output.getvalue()
+        headings = ['Uncommitted changes (1)', 'Other branches (clean working tree) (1)',
+                    'Main (clean working tree) (1)', 'Unavailable (1)']
+        self.assertEqual([report.index(label) for label in headings],
+                         sorted(report.index(label) for label in headings))
+        for detail in (' M tracked.md', '?? new.md', '[behind 2]', 'checkout missing',
+                       'local only; no fetch', '4 repositories inspected; 1 unavailable'):
+            self.assertIn(detail, report)
+        self.assertEqual(git.call_count, 4)
+
+    def test_project_filter_and_success(self):
+        output = StringIO()
+        selected = [('example', Path('example'), '')]
+        with patch.object(w.sys, 'argv', ['workspace.py', 'status', '--project', 'example']), \
+                patch.object(w, 'projects', return_value=selected), \
+                patch.object(w, 'git', return_value='## HEAD (no branch)') as git, \
+                redirect_stdout(output):
+            self.assertEqual(w.main(), 0)
+        git.assert_called_once_with(Path('example'), 'status', '--porcelain=v1', '--branch')
+        self.assertIn('Other branches (clean working tree) (1)', output.getvalue())
+        self.assertNotIn('Unavailable (', output.getvalue())
 
 
 class DoctorTests(unittest.TestCase):

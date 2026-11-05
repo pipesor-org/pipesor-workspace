@@ -111,6 +111,36 @@ def sync(path, url, apply=False):
     return target
 
 
+def status(selected):
+    groups = {label: [] for label in (
+        'Uncommitted changes', 'Other branches (clean working tree)',
+        'Main (clean working tree)', 'Unavailable')}
+    for name, path, _ in selected:
+        try:
+            lines = git(path, 'status', '--porcelain=v1', '--branch').splitlines()
+            if len(lines) > 1:
+                label = 'Uncommitted changes'
+            elif lines[0].split('...')[0] == '## main':
+                label = 'Main (clean working tree)'
+            else:
+                label = 'Other branches (clean working tree)'
+            groups[label].append((name, lines))
+        except (RuntimeError, OSError, ValueError) as error:
+            groups['Unavailable'].append((name, [str(error)]))
+    print('Workspace status (local only; no fetch). Clean means no working tree changes.')
+    print('Branch tracking may be stale; use sync to preview against the remote.')
+    for label, entries in groups.items():
+        if not entries:
+            continue
+        print(f'\n{label} ({len(entries)})')
+        for name, lines in entries:
+            print(f'  {name}')
+            for line in lines:
+                print(f'    {line}')
+    print(f'\n{len(selected)} repositories inspected; {len(groups["Unavailable"])} unavailable.')
+    return int(bool(groups['Unavailable']))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['doctor', 'status', 'sync'])
@@ -140,14 +170,13 @@ def main():
         selected = [item for item in selected if item[0] == args.project]
         if not selected:
             parser.error('unknown project')
+    if args.command == 'status':
+        return status(selected)
     failures = 0
     for name, path, url in selected:
         print(name, flush=True)
         try:
-            if args.command == 'status':
-                print(git(path, 'status', '--short', '--branch'))
-            else:
-                sync(path, url, args.apply)
+            sync(path, url, args.apply)
         except (RuntimeError, OSError, ValueError) as error:
             print(f'  SKIPPED: {error}')
             failures += 1
