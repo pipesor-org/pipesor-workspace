@@ -327,7 +327,7 @@ class InventoryTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name) / 'workspace'
+        self.root = Path(temporary.name).resolve() / 'workspace'
         self.root.mkdir()
         self.manifest = self.root / 'mani.yaml'
 
