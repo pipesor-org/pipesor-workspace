@@ -121,7 +121,8 @@ def main():
         parser.error('--apply is only valid for sync')
     if args.command == 'doctor':
         missing = False
-        for tool in ('git', 'gh', 'mani', 'python3', 'bun', 'lefthook', 'codex'):
+        print(f'python: {sys.executable}')
+        for tool in ('git', 'gh', 'mani', 'bun', 'lefthook', 'codex'):
             location = shutil.which(tool)
             print(f'{tool}: {location or "MISSING"}')
             missing |= location is None
