@@ -34,6 +34,41 @@
       "tags": [
         "docs"
       ]
+    },
+    "pipesor-evidence-correlation-engine": {
+      "path": "../services/pipesor-evidence-correlation-engine",
+      "url": "https://github.com/pipesor-org/pipesor-evidence-correlation-engine.git",
+      "tags": ["services"]
+    },
+    "pipesor-ingestion-normalization-service": {
+      "path": "../services/pipesor-ingestion-normalization-service",
+      "url": "https://github.com/pipesor-org/pipesor-ingestion-normalization-service.git",
+      "tags": ["services"]
+    },
+    "pipesor-log-event-service": {
+      "path": "../services/pipesor-log-event-service",
+      "url": "https://github.com/pipesor-org/pipesor-log-event-service.git",
+      "tags": ["services"]
+    },
+    "pipesor-nlp-log-processor": {
+      "path": "../services/pipesor-nlp-log-processor",
+      "url": "https://github.com/pipesor-org/pipesor-nlp-log-processor.git",
+      "tags": ["services"]
+    },
+    "pipesor-pipeline-service": {
+      "path": "../services/pipesor-pipeline-service",
+      "url": "https://github.com/pipesor-org/pipesor-pipeline-service.git",
+      "tags": ["services"]
+    },
+    "pipesor-rag-retrieval": {
+      "path": "../services/pipesor-rag-retrieval",
+      "url": "https://github.com/pipesor-org/pipesor-rag-retrieval.git",
+      "tags": ["services"]
+    },
+    "pipesor-recommendation-service": {
+      "path": "../services/pipesor-recommendation-service",
+      "url": "https://github.com/pipesor-org/pipesor-recommendation-service.git",
+      "tags": ["services"]
     }
   },
   "tasks": {

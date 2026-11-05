@@ -6,10 +6,14 @@ it does not deploy environments or establish a compatible release across service
 
 ## Current scope
 
-The inventory currently covers `pipesor-frontend`, `pipesor-iac`,
-`pipesor-landing`, `pipesor-docs` and `.github`. It does not include this
-workspace repository. Microservices must be added explicitly before they can be
-inspected or synchronized.
+The inventory covers `pipesor-frontend`, `pipesor-iac`, `pipesor-landing`,
+`pipesor-docs`, `.github` and the explicitly enrolled repositories under
+`services/`: `pipesor-evidence-correlation-engine`,
+`pipesor-ingestion-normalization-service`, `pipesor-log-event-service`,
+`pipesor-nlp-log-processor`, `pipesor-pipeline-service`,
+`pipesor-rag-retrieval` and `pipesor-recommendation-service`. It does not
+include this workspace repository. Services must be added explicitly before
+they can be inspected or synchronized; directory discovery is not automatic.
 
 ## Requirements and setup
 
