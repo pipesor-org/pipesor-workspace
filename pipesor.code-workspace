@@ -1,28 +1,28 @@
 {
   "folders": [
     {
-      "name": "Workspace",
-      "path": "."
-    },
-    {
       "name": "Frontend",
       "path": "../pipesor-frontend"
-    },
-    {
-      "name": "Landing",
-      "path": "../pipesor-landing"
-    },
-    {
-      "name": "Documentation",
-      "path": "../pipesor-docs"
     },
     {
       "name": "Services",
       "path": "../services"
     },
     {
+      "name": "Documentation",
+      "path": "../pipesor-docs"
+    },
+    {
+      "name": "Landing",
+      "path": "../pipesor-landing"
+    },
+    {
       "name": "Infrastructure",
       "path": "../pipesor-iac"
+    },
+    {
+      "name": "Workspace",
+      "path": "."
     },
     {
       "name": "GitHub",

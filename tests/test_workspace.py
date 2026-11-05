@@ -4,6 +4,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('workspace', Path(__file__).parents[1] / 'tools/workspace.py')
@@ -59,16 +61,51 @@ class SyncTests(unittest.TestCase):
         self.git('commit', '-m', 'feat: '+text)
 
     def test_squash_cleanup_and_idempotency(self):
-        w.sync(self.path, self.url, True)
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url, True))
+        self.assertIn('Switched feature/example -> main', output.getvalue())
+        self.assertIn('Updated main:', output.getvalue())
+        self.assertIn('Deleted feature/example', output.getvalue())
+        self.assertNotIn('Would', output.getvalue())
         self.assertEqual(self.git('rev-parse', 'main'), self.squash)
         self.assertNotIn('feature/example', self.git('branch'))
-        w.sync(self.path, self.url, True)
+        with redirect_stdout(output):
+            self.assertFalse(w.sync(self.path, self.url, True))
+        self.assertIn('Unchanged:', output.getvalue())
 
     def test_preview_keeps_branches(self):
         before = self.git('rev-parse', 'main')
-        w.sync(self.path, self.url)
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url))
+        self.assertIn('Would switch feature/example -> main', output.getvalue())
+        self.assertIn('Would update main:', output.getvalue())
+        self.assertIn('Would delete feature/example', output.getvalue())
+        self.assertNotIn('Deleted', output.getvalue())
         self.assertEqual(self.git('rev-parse', 'main'), before)
         self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
+
+    def test_apply_failure_reports_completed_actions(self):
+        original = w.git
+        def fail_deletion(path, *args):
+            if args[0] == 'update-ref':
+                raise RuntimeError('branch changed during cleanup')
+            return original(path, *args)
+        output = StringIO()
+        with patch.object(w, 'git', side_effect=fail_deletion), \
+                patch.object(w, 'projects', return_value=[('example', self.path, self.url)]), \
+                patch.object(w.sys, 'argv', ['workspace.py', 'sync', '--apply']), \
+                redirect_stdout(output):
+            self.assertEqual(w.main(), 1)
+        report = output.getvalue()
+        self.assertIn('Sync apply', report)
+        self.assertIn('Updated main:', report)
+        self.assertNotIn('Deleted feature/example', report)
+        self.assertIn('Apply may be partial', report)
+        self.assertIn('0 changed, 0 unchanged, 1 skipped/failed', report)
+        self.assertEqual(self.git('rev-parse', 'main'), self.squash)
+        self.assertIn('feature/example', self.git('branch'))
 
     def test_equivalent_path_is_accepted(self):
         w.sync(self.path / '..' / 'repo', self.url)
@@ -134,7 +171,79 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
 
 
+class SyncReportTests(unittest.TestCase):
+    def test_preview_counts_and_continues_after_failure(self):
+        selected = [(name, Path(name), '') for name in ('update', 'missing', 'unchanged')]
+        output = StringIO()
+        with patch.object(w.sys, 'argv', ['workspace.py', 'sync']), \
+                patch.object(w, 'projects', return_value=selected), \
+                patch.object(w, 'sync', side_effect=[True, OSError('checkout missing'), False]) as sync, \
+                redirect_stdout(output):
+            self.assertEqual(w.main(), 1)
+        report = output.getvalue()
+        for text in ('Sync preview', 'Fetches and prunes remote-tracking refs',
+                     '3 repositories: 1 with planned changes, 1 unchanged, 1 skipped/failed',
+                     'checkout missing', 'preserve work', 'rerun sync with --apply'):
+            self.assertIn(text, report)
+        self.assertEqual(sync.call_count, 3)
+        self.assertNotIn('Apply may be partial', report)
+
+
+class StatusTests(unittest.TestCase):
+    def test_groups_changes_branches_main_and_failures(self):
+        selected = [(name, Path(name), '') for name in ('main', 'feature', 'dirty', 'missing')]
+        output = StringIO()
+        with patch.object(w, 'git', side_effect=[
+            '## main...origin/main [behind 2]',
+            '## feature/example',
+            '## feature/docs\n M tracked.md\n?? new.md',
+            OSError('checkout missing'),
+        ]) as git, redirect_stdout(output):
+            self.assertEqual(w.status(selected), 1)
+        report = output.getvalue()
+        headings = ['Uncommitted changes (1)', 'Other branches (clean working tree) (1)',
+                    'Main (clean working tree) (1)', 'Unavailable (1)']
+        self.assertEqual([report.index(label) for label in headings],
+                         sorted(report.index(label) for label in headings))
+        for detail in (' M tracked.md', '?? new.md', '[behind 2]', 'checkout missing',
+                       'local only; no fetch', '4 repositories inspected; 1 unavailable'):
+            self.assertIn(detail, report)
+        self.assertEqual(git.call_count, 4)
+
+    def test_project_filter_and_success(self):
+        output = StringIO()
+        selected = [('example', Path('example'), '')]
+        with patch.object(w.sys, 'argv', ['workspace.py', 'status', '--project', 'example']), \
+                patch.object(w, 'projects', return_value=selected), \
+                patch.object(w, 'git', return_value='## HEAD (no branch)') as git, \
+                redirect_stdout(output):
+            self.assertEqual(w.main(), 0)
+        git.assert_called_once_with(Path('example'), 'status', '--porcelain=v1', '--branch')
+        self.assertIn('Other branches (clean working tree) (1)', output.getvalue())
+        self.assertNotIn('Unavailable (', output.getvalue())
+
+
 class DoctorTests(unittest.TestCase):
+    def test_missing_additional_tool_explains_scope_and_keeps_failure_exit(self):
+        output = StringIO()
+        with patch.object(w.sys, 'argv', ['workspace.py', 'doctor']), \
+                patch.object(w.shutil, 'which', side_effect=lambda name: None if name == 'bun' else '/tool'), \
+                patch.object(w, 'run', return_value=''), redirect_stdout(output):
+            self.assertEqual(w.main(), 1)
+        report = output.getvalue()
+        for text in ('Core tools', 'Additional tools', 'bun: MISSING (contributor checks)',
+                     'Authentication: OK', 'API connectivity: OK', 'Result: INCOMPLETE',
+                     'Additional tools are not required by Python status/sync'):
+            self.assertIn(text, report)
+
+    def test_success(self):
+        output = StringIO()
+        with patch.object(w.sys, 'argv', ['workspace.py', 'doctor']), \
+                patch.object(w.shutil, 'which', return_value='/tool'), \
+                patch.object(w, 'run', return_value=''), redirect_stdout(output):
+            self.assertEqual(w.main(), 0)
+        self.assertIn('All tool and GitHub checks passed', output.getvalue())
+
     def test_github_api_failure_makes_doctor_fail(self):
         from contextlib import redirect_stdout
         from io import StringIO
