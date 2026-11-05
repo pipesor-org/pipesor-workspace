@@ -70,6 +70,16 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'main'), before)
         self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
 
+    def test_equivalent_path_is_accepted(self):
+        w.sync(self.path / '..' / 'repo', self.url)
+        self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
+
+    def test_subdirectory_is_rejected(self):
+        subdirectory = self.path / 'nested'
+        subdirectory.mkdir()
+        with self.assertRaisesRegex(RuntimeError, 'root of a standalone checkout'):
+            w.sync(subdirectory, self.url)
+
     def test_unpushed_commit_keeps_active_branch(self):
         self.commit('extra')
         with self.assertRaisesRegex(RuntimeError, 'no verified merged PR'):

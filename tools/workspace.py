@@ -45,7 +45,7 @@ def ancestor(path, first, second):
 
 
 def sync(path, url, apply=False):
-    if Path(git(path, 'rev-parse', '--show-toplevel')).resolve() != path:
+    if not Path(git(path, 'rev-parse', '--show-toplevel')).samefile(path):
         raise RuntimeError('Path is not the root of a standalone checkout')
     if git(path, 'remote', 'get-url', 'origin') != url:
         raise RuntimeError('origin does not match the inventory')
@@ -121,7 +121,8 @@ def main():
         parser.error('--apply is only valid for sync')
     if args.command == 'doctor':
         missing = False
-        for tool in ('git', 'gh', 'mani', 'python3', 'bun', 'lefthook', 'codex'):
+        print(f'python: {sys.executable}')
+        for tool in ('git', 'gh', 'mani', 'bun', 'lefthook', 'codex'):
             location = shutil.which(tool)
             print(f'{tool}: {location or "MISSING"}')
             missing |= location is None

@@ -11,6 +11,20 @@ permissions:
   contents: read
 
 jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun run test:windows
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10

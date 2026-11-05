@@ -23,13 +23,43 @@ Authenticate with `gh auth login` using an account with access to the private re
 Use [Mani 0.32.1](https://github.com/alajmo/mani/releases/tag/v0.32.1)
 when you need to clone missing inventory repositories or run Mani tasks. If
 installed in the parent workspace's `.tools/bin`, add that directory to `PATH`
-or invoke `../.tools/bin/mani` from this repository.
+or invoke `../.tools/bin/mani` from this repository (Windows: `..\.tools\bin\mani.exe`).
+
+Run commands from this repository's root, using the instructions for your shell.
+
+### WSL and Linux (Bash)
+
+In WSL, install the Linux versions of Python, Git, gh, Mani and the contributor
+tools inside your WSL distribution. Keep this workspace and its sibling checkouts
+together in the WSL filesystem, for example under `~/code/pipesor/`. Authenticate
+with `gh auth login` inside WSL. Use `python3`; a `python` alias is not required.
 
 ```sh
 python3 tools/workspace.py status
+python3 tools/workspace.py doctor
+python3 tools/workspace.py sync  # preview
 ```
 
-Run commands from this repository's root. `mani sync` clones missing repositories;
+### Native Windows (PowerShell)
+
+Install the Windows versions of the tools and put them on `PATH`. Install Python
+3.10+ with the `py` launcher, and authenticate with `gh auth login` in PowerShell.
+Keep the workspace and sibling checkouts together, for example under
+`C:\code\pipesor\`. Check `py -3 --version` before running the utility.
+
+```powershell
+py -3 tools/workspace.py status
+py -3 tools/workspace.py doctor
+py -3 tools/workspace.py sync  # preview
+```
+
+For all later examples, use `py -3` in place of `python3` in PowerShell.
+Use the commands and tool installations belonging to the environment you are
+working in; Windows installations do not replace the Linux tools needed in WSL.
+
+### Inventory and contributor tools
+
+`mani sync` clones missing repositories;
 review the manifest before cloning. `mani run status --all` runs the inventory's grouped
 Git status task. Both commands require Mani on `PATH`.
 `mani sync` does not update existing main branches. `mani.yaml` uses JSON syntax, which is
@@ -38,13 +68,16 @@ valid YAML, so the Python utility reads the same inventory without extra package
 The checked-in VS Code workspace opens the sibling repositories and `services/`.
 
 For contributing to this repository, install Bun 1.4.4 and standalone Lefthook
-2.2.2, verifying the binary against the official release checksums, then run:
+2.2.2 for your environment, verifying the binary against the official release
+checksums, then run in either shell:
 
 ```sh
 bun install --frozen-lockfile
 bun run setup:hooks
-bun run test
 ```
+
+Run tests in WSL/Linux with `bun run test`, or in Windows PowerShell with
+`bun run test:windows`. These use `python3` and `py -3`, respectively.
 
 Run `python3 tools/workspace.py doctor` to check tool availability, GitHub
 authentication and API connectivity. The current doctor checks Git, gh, Mani,
@@ -121,6 +154,13 @@ squash settings must be configured when the remote is created.
 
 ```sh
 python3 -m unittest discover -s tests -v
+git diff --check
+```
+
+In Windows PowerShell, run:
+
+```powershell
+py -3 -m unittest discover -s tests -v
 git diff --check
 ```
 
