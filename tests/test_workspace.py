@@ -47,12 +47,15 @@ class SyncTests(unittest.TestCase):
         self.git('remote', 'set-url', 'origin', self.url)
         self.pr = {'number': 1, 'merged_at': '2026-11-01', 'head': {'sha': self.head, 'repo': {'full_name': 'pipesor-org/example'}}, 'base': {'ref': 'main', 'repo': {'full_name': 'pipesor-org/example'}}, 'merge_commit_sha': self.squash}
         self.pages = [[], [self.pr]]
+        self.api_branch = 'feature/example'
         original = w.run
         def runner(path, *args):
             if args[0] == 'gh':
+                if 'head=pipesor-org:docs/keep' in args:
+                    return json.dumps([[]])
                 self.assertEqual(args, ('gh', 'api', '--method', 'GET', '--paginate', '--slurp',
                     'repos/pipesor-org/example/pulls', '-f', 'state=closed', '-f', 'base=main',
-                    '-f', 'head=pipesor-org:feature/example', '-f', 'per_page=100'))
+                    '-f', f'head=pipesor-org:{self.api_branch}', '-f', 'per_page=100'))
                 return json.dumps(self.pages)
             if args[:3] == ('git', 'fetch', '--prune'):
                 return original(path, 'git', 'fetch', '--prune', str(self.remote), '+refs/heads/*:refs/remotes/origin/*')
@@ -118,6 +121,34 @@ class SyncTests(unittest.TestCase):
         self.assertNotIn('Deleted', output.getvalue())
         self.assertEqual(self.checkout_state(), before)
         self.assertEqual(self.git('rev-parse', 'origin/main'), self.squash)
+
+    def test_verified_docs_branch_switches_and_is_deleted(self):
+        self.git('branch', '-m', 'docs/example')
+        self.api_branch = 'docs/example'
+        before = self.checkout_state()
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url))
+        self.assertIn('Would switch docs/example -> main', output.getvalue())
+        self.assertIn('Would delete docs/example', output.getvalue())
+        self.assertEqual(self.checkout_state(), before)
+        self.pr['head']['sha'] = self.base
+        with self.rejected_without_changes('no verified merged PR'):
+            w.sync(self.path, self.url, True)
+        self.pr['head']['sha'] = self.head
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url, True))
+        self.assertEqual(self.git('branch', '--show-current'), 'main')
+        self.assertEqual(self.git('rev-parse', 'main'), self.squash)
+        self.assertNotIn('docs/example', self.git('branch'))
+
+    def test_verified_inactive_docs_branch_is_deleted(self):
+        self.git('branch', '-m', 'docs/example')
+        self.git('switch', 'main')
+        self.api_branch = 'docs/example'
+        with redirect_stdout(StringIO()):
+            self.assertTrue(w.sync(self.path, self.url, True))
+        self.assertNotIn('docs/example', self.git('branch'))
 
     def test_apply_failure_reports_completed_actions(self):
         original = w.git

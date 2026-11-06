@@ -73,7 +73,7 @@ def sync(path, url, apply=False):
     deletions = []
     for line in git(path, 'for-each-ref', '--format=%(refname:short) %(objectname)', 'refs/heads').splitlines():
         branch, sha = line.split()
-        if not branch.startswith(('feature/', 'fix/')):
+        if branch == 'main':
             continue
         if branch != active and 'refs/heads/' + branch in occupied:
             continue
