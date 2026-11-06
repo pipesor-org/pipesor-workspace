@@ -129,11 +129,11 @@ before using `--apply`, retaining the same `--project` selection when applicable
 Each checkout must have the exact inventory origin URL, a normal branch fetch
 refspec, no pending Git operation and no uncommitted/untracked changes. Local main
 must be an ancestor of the fetched origin/main; updates use fast-forward only.
-Only feature/* and fix/* are cleanup candidates. Deletion requires a merged PR to
-main in the same repository, exact local branch/head SHA equality, and the squash
-commit reachable from the fetched main. Worktree branches are preserved. An active
-branch without that evidence blocks checkout changes for that repo. Unknown
-branches, docs/ and exceptional hotfix branches remain for manual review.
+Local branches of any name are cleanup candidates, except main. Deletion requires
+a merged PR to main in the same repository, exact local branch/head SHA equality,
+and the squash commit reachable from the fetched main. Worktree branches and
+branches without that evidence are preserved. An active branch without that
+evidence blocks checkout changes for that repo.
 
 If a repository is skipped for uncommitted or untracked work, inspect it with
 `git -C ../<repository> status` and decide how to preserve that work before
