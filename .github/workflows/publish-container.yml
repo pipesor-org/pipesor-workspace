@@ -1,0 +1,70 @@
+{
+  "name": "Publish verified container",
+  "on": {
+    "workflow_call": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "jobs": {
+    "publish": {
+      "if": "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !github.event.act }}",
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 10,
+      "permissions": {
+        "contents": "read",
+        "packages": "write"
+      },
+      "defaults": {
+        "run": {
+          "shell": "bash"
+        }
+      },
+      "steps": [
+        {
+          "name": "Validate publication context",
+          "env": {
+            "ACT_EVENT": "${{ github.event.act }}"
+          },
+          "run": "test \"$GITHUB_EVENT_NAME\" = push\ntest \"$GITHUB_REF\" = refs/heads/main\ntest \"${ACT:-}\" != true\ntest \"$ACT_EVENT\" != true\nimage=\"ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\"\necho \"IMAGE=$image\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "uses": "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
+          "with": {
+            "name": "image-${{ github.run_id }}-${{ github.run_attempt }}"
+          }
+        },
+        {
+          "name": "Load the tested image",
+          "run": "sha256sum service-image.tar | cmp - service-image.tar.sha256\ndocker load --input service-image.tar\ntest \"$(docker image inspect \"$IMAGE\" --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}')\" = \"$GITHUB_SHA\""
+        },
+        {
+          "name": "Publish without rebuilding",
+          "env": {
+            "GHCR_TOKEN": "${{ github.token }}"
+          },
+          "run": "printf '%s' \"$GHCR_TOKEN\" | docker login ghcr.io --username \"$GITHUB_ACTOR\" --password-stdin\ndocker push \"$IMAGE\""
+        },
+        {
+          "name": "Record immutable candidate",
+          "run": "docker image inspect \"$IMAGE\" --format '{{index .RepoDigests 0}}' > published-reference.txt\npython3 - <<'PYTHON'\nimport json\nimport os\nfrom pathlib import Path\nimport re\n\nimage = os.environ['IMAGE'].rsplit(':', 1)[0]\nexpected = f\"ghcr.io/{os.environ['GITHUB_REPOSITORY'].lower()}\"\nif image != expected:\n    raise SystemExit('Image does not match the caller repository')\nreference = Path('published-reference.txt').read_text().strip()\nif not re.fullmatch(re.escape(expected) + r'@sha256:[0-9a-f]{64}', reference):\n    raise SystemExit('Published digest does not match the candidate repository')\ncandidate = {\n    'schema_version': 1,\n    'source_sha': os.environ['GITHUB_SHA'],\n    'image': image,\n    'digest': reference.split('@', 1)[1],\n    'build_run_id': os.environ['GITHUB_RUN_ID'],\n    'build_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],\n}\nPath('candidate.json').write_text(json.dumps(candidate, indent=2) + '\\n')\nwith open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:\n    summary.write(f\"Published candidate: `{reference}`\\n\\nSource: `{candidate['source_sha']}`\\n\")\nPYTHON"
+        },
+        {
+          "name": "Store candidate handoff",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "candidate-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "candidate.json",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "name": "Remove registry credentials",
+          "if": "${{ always() }}",
+          "run": "docker logout ghcr.io"
+        }
+      ]
+    }
+  }
+}

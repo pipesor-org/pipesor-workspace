@@ -1,0 +1,25 @@
+{
+  "name": "Verify Java service",
+  "description": "Run the service Maven wrapper and retain Surefire reports.",
+  "runs": {
+    "using": "composite",
+    "steps": [
+      {
+        "name": "Compile, test and package",
+        "shell": "bash",
+        "run": "./mvnw -B -ntp clean verify"
+      },
+      {
+        "name": "Store test reports",
+        "if": "${{ always() && env.ACT != 'true' }}",
+        "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+        "with": {
+          "name": "tests-${{ github.run_id }}-${{ github.run_attempt }}",
+          "path": "target/surefire-reports/TEST-*.xml",
+          "if-no-files-found": "ignore",
+          "retention-days": 14
+        }
+      }
+    ]
+  }
+}
