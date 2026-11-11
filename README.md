@@ -1,8 +1,9 @@
 # Pipesor workspace
 
-Development tooling for sibling Pipesor repositories. Each repository keeps its own
-Git history, reviews, hooks and releases. This workspace updates local checkouts;
-it does not deploy environments or establish a compatible release across services.
+Development tooling and shared CI components for sibling Pipesor repositories.
+Each repository keeps its own Git history, reviews, hooks and releases. The sync
+utility updates local checkouts; it does not deploy environments or establish a
+compatible release across services.
 
 ## Current scope
 
@@ -164,6 +165,44 @@ These commands do not clean up the workspace's local branches. To enroll a real 
 project with path `../services/<repository>`, its Pipesor HTTPS URL and a `services`
 tag. This requires a reviewed manifest change; directory discovery is not automatic.
 
+## Shared Java CI components
+
+[`actions/java-verify`](actions/java-verify/action.yml) runs
+`./mvnw -B -ntp clean verify` in the caller's checkout and always attempts to
+retain Surefire XML reports as `tests-<run>-<attempt>` for 14 days. The caller
+owns checkout, JDK setup/cache, service-specific validation and image build/smoke
+checks. The composite has no inputs, secrets or custom command interface.
+It skips artifact upload under `act` (`ACT=true`); local execution does not prove
+GitHub artifact, permission or registry behavior.
+
+[`publish-container.yml`](.github/workflows/publish-container.yml) is a reusable
+workflow with no inputs or inherited secrets. A caller job must depend on its
+successful verification/image job and grant only `contents: read` and
+`packages: write`. The caller archives its tested image as `service-image.tar`
+and `service-image.tar.sha256` in the same run's
+`image-<run>-<attempt>` artifact. The expected image is
+`ghcr.io/<lowercase-caller-repository>:sha-<source-sha>-<run>-<attempt>`.
+The publisher accepts only push/main outside act, checks the exact archive
+checksum and source revision label, loads and publishes without checkout or
+rebuild, using the caller's own `GITHUB_TOKEN`. Registry logout runs even after
+failure. The resulting `candidate-<run>-<attempt>` artifact retains the unchanged
+schema-version-1 `candidate.json` for 90 days: source SHA, repository image,
+published digest, original run ID and attempt. No deployment or release is added.
+
+Consumers must pin both component references to a reviewed, published full commit
+SHA of this repository, updating that SHA explicitly when adopting changes. A
+local commit or worktree is not available to GitHub runners until publication.
+Private reusable workflow/action access is currently disabled; the organization-wide private-repository Access policy must be explicitly
+authorized before hosted adoption, and callers must allow these components.
+This setting is not a per-consumer allowlist; review indirect collaborator
+access to the shared repository before enabling it. This
+change does not alter repository access settings, tokens, secrets or permissions
+outside the workflow job. Neither the components nor simulated tests establish
+that private access, artifacts or GHCR publication work on hosted runners.
+
+These CI components are separate from synchronization. The sync utility still
+does not push, publish, deploy or modify automation/access settings.
+
 ## Contribution and verification
 
 Follow [organization policy](https://github.com/pipesor-org/.github/blob/main/CONTRIBUTING.md):
@@ -188,6 +227,10 @@ Tests create temporary Git remotes/checkouts and mock only GitHub responses.
 They cover squash cleanup, preview, repeated runs, extra local commits, closed
 unmerged PRs, dirty files, diverged main, worktrees and missing squash evidence.
 CI runs these tests and Commitlint; it never synchronizes developers' checkouts.
+Shared CI tests parse the JSON-compatible YAML and exercise publisher shell steps
+with simulated Docker responses, including context, checksum, revision and digest
+failures. Ubuntu/Bash publisher tests are skipped on native Windows. They do not
+perform a hosted workflow or registry integration.
 The first commit of a new repository bootstraps main; subsequent work uses PRs.
 
 ## Codex
