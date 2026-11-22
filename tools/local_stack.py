@@ -134,10 +134,16 @@ def service_env(workload, state, keys):
         "PIPESOR_WORKLOAD_ID": workload,
         "PIPESOR_SIGNING_KEY_FILE": str(keys / f"{workload}.pem"),
         "PIPESOR_SECURITY_AUDIENCE": f"urn:pipesor:api:{workload}",
-        "PIPESOR_DATABASE_URL": "jdbc:postgresql://127.0.0.1:55432/pipesor",
-        "PIPESOR_DATABASE_USERNAME": "pipesor",
-        "PIPESOR_DATABASE_PASSWORD": state["postgresPassword"],
     }
+    if workload in JAVA_SERVICES:
+        lines["PIPESOR_DATABASE_URL"] = "jdbc:postgresql://127.0.0.1:55432/pipesor"
+    elif workload == "rag":
+        lines["PIPESOR_DATABASE_URL"] = "postgresql+psycopg://127.0.0.1:55432/pipesor"
+    if workload in JAVA_SERVICES or workload == "rag":
+        lines["PIPESOR_DATABASE_USERNAME"] = "pipesor"
+        lines["PIPESOR_DATABASE_PASSWORD"] = state["postgresPassword"]
+    if workload not in JAVA_SERVICES:
+        del lines["SPRING_PROFILES_ACTIVE"]
     if workload == "ingestion":
         lines["PIPESOR_SESSION_SIGNING_KEY_FILE"] = str(keys / "session.pem")
         lines.update(github_settings())
