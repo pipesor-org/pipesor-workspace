@@ -27,7 +27,7 @@ PORTS = {
 WORKLOADS = tuple(PORTS)
 # Inbound trust per target: caller -> roles (platform identity contract v1, route catalog).
 TRUST = {
-    "ingestion": {"pipeline": ["Pipeline.MachineScope.Check", "Pipeline.GitHubFacts.Read"]},
+    "ingestion": {"pipeline": ["Pipeline.MachineScope.Check", "Pipeline.GitHubFacts.Read", "Pipeline.CaptureScope.Write"]},
     "pipeline": {
         "correlation": ["Correlation.OperationalReferences.Check"],
         "log-event": ["Evidence.Check"],
