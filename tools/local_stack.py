@@ -11,6 +11,7 @@ import os
 import secrets
 import stat
 import string
+import shutil
 import subprocess
 import sys
 import uuid
@@ -231,6 +232,20 @@ def service_jar(workload):
     return jars[0]
 
 
+def runtime_jar(workload):
+    """Copy the built jar into the private state directory and return the copy.
+
+    A running service keeps reading classes from its jar; rebuilding target/ while it runs would replace them
+    underneath it (ClassNotFoundException). The copy decouples builds from the running stack.
+    """
+    copy = private_dir(STATE / "runtime") / f"{workload}.jar"
+    temporary = copy.with_suffix(".jar.tmp")
+    shutil.copyfile(service_jar(workload), temporary)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, copy)
+    return copy
+
+
 def running(workload):
     pid_file = STATE / f"{workload}.pid"
     if not pid_file.exists():
@@ -257,7 +272,7 @@ def services(action, names):
                 print(f"{workload}: already running (pid {pid})")
                 continue
             log = open(STATE / f"{workload}.log", "ab")
-            process = subprocess.Popen(["java", "-jar", str(service_jar(workload))], env={**os.environ, **env_values(workload)},
+            process = subprocess.Popen(["java", "-jar", str(runtime_jar(workload))], env={**os.environ, **env_values(workload)},
                                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             (STATE / f"{workload}.pid").write_text(str(process.pid))
             print(f"{workload}: started (pid {process.pid}, log {STATE / (workload + '.log')})")
