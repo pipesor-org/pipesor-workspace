@@ -99,6 +99,30 @@ def tenant_id(state):
     return str(uuid.uuid4())
 
 
+def github_settings():
+    """GitHub App settings for Ingestion, taken from the operator's existing private capture properties."""
+    source = CONFIG / "ingestion-capture.properties"
+    values = {}
+    if source.exists():
+        for line in source.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip()
+    settings = {
+        "PIPESOR_GITHUB_AUTHORITY_FILE": str(CONFIG / "authority.json"),
+        "PIPESOR_GITHUB_CLIENT_SECRET_FILE": str(CONFIG / "github-client-secret"),
+        "PIPESOR_GITHUB_CALLBACK_URL": f"http://127.0.0.1:{PORTS['ingestion']}/api/v1/auth/github/callback",
+        "PIPESOR_GITHUB_CUSTODY_DIRECTORY": str(CONFIG / "custody"),
+    }
+    for env, key in (("PIPESOR_GITHUB_APP_ID", "ingestion.local-capture.app"),
+                     ("PIPESOR_GITHUB_CAPTURE_DOMAIN", "ingestion.local-capture.domain"),
+                     ("PIPESOR_GITHUB_PRIVATE_KEY_FILE", "ingestion.local-capture.signing-key-file"),
+                     ("PIPESOR_GITHUB_PRIVATE_KEY_SHA256", "ingestion.local-capture.signing-key-sha256")):
+        if values.get(key):
+            settings[env] = values[key]
+    return settings
+
+
 def service_env(workload, state, keys):
     port = PORTS[workload]
     lines = {
@@ -116,6 +140,7 @@ def service_env(workload, state, keys):
     }
     if workload == "ingestion":
         lines["PIPESOR_SESSION_SIGNING_KEY_FILE"] = str(keys / "session.pem")
+        lines.update(github_settings())
         lines["PIPESOR_SERVICE_BUS_CONNECTION_STRING"] = SERVICE_BUS
         lines["PIPESOR_SERVICE_BUS_TOPIC"] = "workflow-evidence"
     if workload == "recommendation":
