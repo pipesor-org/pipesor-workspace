@@ -110,5 +110,22 @@ class LocalStackTests(unittest.TestCase):
         self.assertTrue(all(s["Properties"]["MaxDeliveryCount"] == 10 for s in topic["Subscriptions"]))
 
 
+    def test_services_run_a_private_copy_of_the_built_jar(self):
+        services = Path(self.temp.name) / "services"
+        target = services / "pipesor-pipeline-service" / "target"
+        target.mkdir(parents=True)
+        (target / "pipesor-pipeline-service-0.1.0-SNAPSHOT.jar").write_bytes(b"first build")
+        state = Path(self.temp.name) / "state"
+        with mock.patch.object(self.stack, "ROOT", services / "pipesor-workspace"), \
+                mock.patch.object(self.stack, "STATE", state), \
+                mock.patch.object(self.stack, "JAVA_SERVICES", {"pipeline": "pipesor-pipeline-service"}):
+            copy = self.stack.runtime_jar("pipeline")
+            # Rebuilding target/ afterwards must not change the jar the running service reads.
+            (target / "pipesor-pipeline-service-0.1.0-SNAPSHOT.jar").write_bytes(b"second build")
+            self.assertEqual(b"first build", copy.read_bytes())
+            self.assertEqual(state / "runtime" / "pipeline.jar", copy)
+            self.assertEqual(0o600, stat.S_IMODE(copy.stat().st_mode))
+
+
 if __name__ == "__main__":
     unittest.main()
