@@ -203,6 +203,31 @@ that private access, artifacts or GHCR publication work on hosted runners.
 These CI components are separate from synchronization. The sync utility still
 does not push, publish, deploy or modify automation/access settings.
 
+## Local runtime stack
+
+`local-stack/` and `tools/local_stack.py` implement the `local` profile of the
+[runtime manifest](https://github.com/pipesor-org/pipesor-docs/blob/main/docs/development/runtime-manifest.md):
+PostgreSQL 17 with pgvector (host port `55432`, database `pipesor`) and the Azure
+Service Bus emulator (AMQP on `5672`) with topic `workflow-evidence` and the
+`pipeline`, `log-event` and `nlp` filtered subscriptions. Requires Docker with
+Compose and `openssl`.
+
+```sh
+python3 tools/local_stack.py init    # keys, credentials, env/<workload>.env (0600)
+python3 tools/local_stack.py up      # start and wait for the containers
+python3 tools/local_stack.py status
+python3 tools/local_stack.py down    # stop; volumes are kept
+```
+
+`init` is idempotent and writes only under `~/.config/pipesor-local/` (override with
+`PIPESOR_LOCAL_HOME`): one RSA signing key per workload plus the session key, random
+stack passwords, and one env file per service with its audience, trusted callers,
+outbound endpoints, database and messaging settings. Load a service's settings with
+`set -a; . ~/.config/pipesor-local/env/<workload>.env; set +a` before starting it
+from its repository. Nothing generated is committed. The emulator caps message TTL at
+one hour and duplicate detection at five minutes, so its settings differ from Azure
+there only. Its container log prints the local SQL password; treat the log as local.
+
 ## Contribution and verification
 
 Follow [organization policy](https://github.com/pipesor-org/.github/blob/main/CONTRIBUTING.md):
