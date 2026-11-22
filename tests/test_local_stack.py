@@ -22,6 +22,7 @@ def env(text):
     return {key: value.strip("'") for key, value in (line.split("=", 1) for line in text.splitlines())}
 
 
+@unittest.skipUnless(os.name == "posix", "the local stack tool targets WSL/Linux (POSIX modes and bash)")
 class LocalStackTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
