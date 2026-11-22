@@ -118,6 +118,9 @@ def service_env(workload, state, keys):
         lines["PIPESOR_SESSION_SIGNING_KEY_FILE"] = str(keys / "session.pem")
         lines["PIPESOR_SERVICE_BUS_CONNECTION_STRING"] = SERVICE_BUS
         lines["PIPESOR_SERVICE_BUS_TOPIC"] = "workflow-evidence"
+    if workload == "recommendation":
+        lines["PIPESOR_INFERENCE_ENDPOINT"] = "https://ai-pipesor-dev-04f339b7.services.ai.azure.com"
+        lines["PIPESOR_INFERENCE_DEPLOYMENT"] = "pipesor-dev-diagnostics"
     if workload in SUBSCRIPTIONS:
         lines["PIPESOR_SERVICE_BUS_CONNECTION_STRING"] = SERVICE_BUS
         lines["PIPESOR_SERVICE_BUS_TOPIC"] = "workflow-evidence"
