@@ -84,6 +84,17 @@ class LocalStackTests(unittest.TestCase):
         value = subprocess.run(["bash", "-c", script], check=True, capture_output=True, text=True).stdout
         self.assertEqual(value, self.stack.SERVICE_BUS)
 
+    def test_python_services_get_python_friendly_settings(self):
+        self.init()
+        rag = env((self.home / "env/rag.env").read_text())
+        nlp = env((self.home / "env/nlp.env").read_text())
+        self.assertTrue(rag["PIPESOR_DATABASE_URL"].startswith("postgresql+psycopg://127.0.0.1:55432/"))
+        self.assertNotIn("PIPESOR_DATABASE_URL", nlp)
+        self.assertNotIn("SPRING_PROFILES_ACTIVE", rag)
+        self.assertEqual(rag["PIPESOR_ENVIRONMENT"], "local")
+        pipeline = env((self.home / "env/pipeline.env").read_text())
+        self.assertTrue(pipeline["PIPESOR_DATABASE_URL"].startswith("jdbc:postgresql://"))
+
     def test_service_bus_topology_matches_the_manifest(self):
         config = json.loads((ROOT / "local-stack" / "servicebus-config.json").read_text())
         topic, = config["UserConfig"]["Namespaces"][0]["Topics"]
