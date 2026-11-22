@@ -19,7 +19,7 @@ def load(home):
 
 
 def env(text):
-    return dict(line.split("=", 1) for line in text.splitlines())
+    return {key: value.strip("'") for key, value in (line.split("=", 1) for line in text.splitlines())}
 
 
 class LocalStackTests(unittest.TestCase):
@@ -75,6 +75,13 @@ class LocalStackTests(unittest.TestCase):
             for key, value in values.items():
                 if key.endswith("JWKSURI") or key.startswith("PIPESOR_ENDPOINTS_"):
                     self.assertTrue(value.startswith("http://127.0.0.1:"), key)
+
+    def test_env_files_survive_shell_sourcing(self):
+        import subprocess
+        self.init()
+        script = f"set -a; . '{self.home}/env/pipeline.env'; set +a; printf %s \"$PIPESOR_SERVICE_BUS_CONNECTION_STRING\""
+        value = subprocess.run(["bash", "-c", script], check=True, capture_output=True, text=True).stdout
+        self.assertEqual(value, self.stack.SERVICE_BUS)
 
     def test_service_bus_topology_matches_the_manifest(self):
         config = json.loads((ROOT / "local-stack" / "servicebus-config.json").read_text())

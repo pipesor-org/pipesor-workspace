@@ -132,7 +132,14 @@ def service_env(workload, state, keys):
         lines[prefix + "ROLES"] = ",".join(roles)
     for target in OUTBOUND[workload]:
         lines[f"PIPESOR_ENDPOINTS_{target.upper().replace('-', '')}"] = f"http://127.0.0.1:{PORTS[target]}"
-    return "".join(f"{key}={value}\n" for key, value in lines.items())
+    return "".join(f"{key}={shell_quote(value)}\n" for key, value in lines.items())
+
+
+def shell_quote(value):
+    """Single-quote values so `set -a; . file` keeps characters such as ';' intact."""
+    if "'" in value or "\n" in value:
+        raise SystemExit("Env values must not contain quotes or newlines")
+    return f"'{value}'"
 
 
 def init(_args):
