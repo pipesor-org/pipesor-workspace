@@ -190,6 +190,72 @@ def init(_args):
     print(f"Tenant: {state['tenantId']}. Service env files: {envs}/<workload>.env")
 
 
+JAVA_SERVICES = {
+    "ingestion": "services/pipesor-ingestion-normalization-service",
+    "pipeline": "services/pipesor-pipeline-service",
+    "log-event": "services/pipesor-log-event-service",
+    "correlation": "services/pipesor-evidence-correlation-engine",
+    "recommendation": "services/pipesor-recommendation-service",
+}
+STATE = Path(os.environ.get("PIPESOR_LOCAL_STATE", Path.home() / ".local" / "state" / "pipesor-local"))
+
+
+def env_values(workload):
+    values = {}
+    for line in (CONFIG / "env" / f"{workload}.env").read_text().splitlines():
+        key, value = line.split("=", 1)
+        values[key] = value[1:-1] if value.startswith("'") and value.endswith("'") else value
+    return values
+
+
+def service_jar(workload):
+    target = ROOT.parent / JAVA_SERVICES[workload] / "target"
+    jars = [jar for jar in target.glob("*-SNAPSHOT.jar") if not jar.name.endswith("-plain.jar")]
+    if len(jars) != 1:
+        raise SystemExit(f"Build {JAVA_SERVICES[workload]} first: ./mvnw -B -ntp -DskipTests package")
+    return jars[0]
+
+
+def running(workload):
+    pid_file = STATE / f"{workload}.pid"
+    if not pid_file.exists():
+        return None
+    pid = int(pid_file.read_text())
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        pid_file.unlink(missing_ok=True)
+        return None
+    return pid
+
+
+def services(action, names):
+    private_dir(STATE)
+    selected = names or list(JAVA_SERVICES)
+    for workload in selected:
+        if workload not in JAVA_SERVICES:
+            raise SystemExit(f"Unknown Java service {workload}")
+    for workload in selected:
+        pid = running(workload)
+        if action == "start":
+            if pid:
+                print(f"{workload}: already running (pid {pid})")
+                continue
+            log = open(STATE / f"{workload}.log", "ab")
+            process = subprocess.Popen(["java", "-jar", str(service_jar(workload))], env={**os.environ, **env_values(workload)},
+                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            (STATE / f"{workload}.pid").write_text(str(process.pid))
+            print(f"{workload}: started (pid {process.pid}, log {STATE / (workload + '.log')})")
+        elif action == "stop":
+            if pid:
+                os.kill(pid, 15)
+                (STATE / f"{workload}.pid").unlink(missing_ok=True)
+                print(f"{workload}: stopped")
+        else:
+            print(f"{workload}: {'running pid ' + str(pid) if pid else 'stopped'} (port {PORTS[workload]})")
+    return 0
+
+
 def compose(*arguments):
     env_file = CONFIG / "stack.env"
     if not env_file.exists():
@@ -205,7 +271,12 @@ def main(argv=None):
     commands.add_parser("up", help="start PostgreSQL/pgvector and the Service Bus emulator")
     commands.add_parser("down", help="stop the stack (volumes are kept)")
     commands.add_parser("status", help="show stack containers")
+    for action in ("start", "stop", "ps"):
+        sub = commands.add_parser(f"services-{action}", help=f"{action} the Java services built in sibling checkouts")
+        sub.add_argument("names", nargs="*", help="workloads (default: all Java services)")
     args = parser.parse_args(argv)
+    if args.command.startswith("services-"):
+        return services(args.command.removeprefix("services-"), args.names)
     if args.command == "init":
         return init(args)
     if args.command == "up":

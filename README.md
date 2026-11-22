@@ -219,6 +219,20 @@ python3 tools/local_stack.py status
 python3 tools/local_stack.py down    # stop; volumes are kept
 ```
 
+Build each Java service once in its checkout (`./mvnw -B -ntp -DskipTests package`), then
+run them against the stack with their generated env files:
+
+```sh
+python3 tools/local_stack.py services-start            # or name workloads, e.g. pipeline correlation
+python3 tools/local_stack.py services-ps
+python3 tools/local_stack.py services-stop
+```
+
+PIDs and logs live in `~/.local/state/pipesor-local/` (override with `PIPESOR_LOCAL_STATE`).
+Ports: ingestion 8081, pipeline 8082, log-event 8083, nlp 8084, correlation 8085,
+recommendation 8086, rag 8087, dashboard 5173. NLP and RAG are started from their own
+repositories with `~/.config/pipesor-local/env/{nlp,rag}.env`.
+
 `init` is idempotent and writes only under `~/.config/pipesor-local/` (override with
 `PIPESOR_LOCAL_HOME`): one RSA signing key per workload plus the session key, random
 stack passwords, and one env file per service with its audience, trusted callers,
