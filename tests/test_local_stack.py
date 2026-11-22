@@ -92,6 +92,8 @@ class LocalStackTests(unittest.TestCase):
         self.assertNotIn("PIPESOR_DATABASE_URL", nlp)
         self.assertNotIn("SPRING_PROFILES_ACTIVE", rag)
         self.assertEqual(rag["PIPESOR_ENVIRONMENT"], "local")
+        self.assertEqual(rag["PIPESOR_RAG_AUTHENTICATION_MODE"], "platform")
+        self.assertEqual(rag["PIPESOR_RAG_STORAGE_BACKEND"], "postgresql")
         pipeline = env((self.home / "env/pipeline.env").read_text())
         self.assertTrue(pipeline["PIPESOR_DATABASE_URL"].startswith("jdbc:postgresql://"))
 
