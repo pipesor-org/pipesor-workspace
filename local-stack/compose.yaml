@@ -1,0 +1,48 @@
+# Pipesor local runtime stack (see pipesor-docs/docs/development/runtime-manifest.md).
+# Services run from their own repositories with the `local` profile against this stack.
+name: pipesor-local
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17@sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd
+    environment:
+      POSTGRES_DB: pipesor
+      POSTGRES_USER: pipesor
+      POSTGRES_PASSWORD: ${PIPESOR_LOCAL_POSTGRES_PASSWORD:?run tools/local_stack.py init first}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-pipesor.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pipesor -d pipesor"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  sqledge:
+    image: mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${PIPESOR_LOCAL_MSSQL_PASSWORD:?run tools/local_stack.py init first}
+    volumes:
+      - mssql-data:/var/opt/mssql
+
+  servicebus:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:2.0.0
+    depends_on:
+      - sqledge
+    environment:
+      ACCEPT_EULA: "Y"
+      SQL_SERVER: sqledge
+      MSSQL_SA_PASSWORD: ${PIPESOR_LOCAL_MSSQL_PASSWORD:?run tools/local_stack.py init first}
+      SQL_WAIT_INTERVAL: "15"
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:5300:5300"
+    volumes:
+      - ./servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+
+volumes:
+  postgres-data:
+  mssql-data:
