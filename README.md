@@ -1,6 +1,7 @@
 # Pipesor workspace
 
-Development tooling and shared CI components for sibling Pipesor repositories.
+Development tooling for sibling Pipesor repositories. Shared CI lives in
+[pipesor-ci](https://github.com/pipesor-org/pipesor-ci).
 Each repository keeps its own Git history, reviews, hooks and releases. The sync
 utility updates local checkouts; it does not deploy environments or establish a
 compatible release across services.
@@ -8,7 +9,7 @@ compatible release across services.
 ## Current scope
 
 The inventory covers `pipesor-frontend`, `pipesor-iac`, `pipesor-landing`,
-`pipesor-docs`, `.github` and the explicitly enrolled repositories under
+`pipesor-docs`, `pipesor-ci`, `.github` and the explicitly enrolled repositories under
 `services/`: `pipesor-evidence-correlation-engine`,
 `pipesor-ingestion-normalization-service`, `pipesor-log-event-service`,
 `pipesor-nlp-log-processor`, `pipesor-pipeline-service`,
@@ -19,7 +20,7 @@ they can be inspected or synchronized; directory discovery is not automatic.
 ## Requirements and setup
 
 Place this checkout beside `pipesor-frontend`, `pipesor-iac`, `pipesor-landing`,
-`pipesor-docs`, `.github`, and `services/`. Install Python 3.10+, Git and GitHub CLI.
+`pipesor-docs`, `pipesor-ci`, `.github`, and `services/`. Install Python 3.10+, Git and GitHub CLI.
 Authenticate with `gh auth login` using an account with access to the private repos.
 Use [Mani 0.32.1](https://github.com/alajmo/mani/releases/tag/v0.32.1)
 when you need to clone missing inventory repositories or run Mani tasks. If
@@ -165,43 +166,14 @@ These commands do not clean up the workspace's local branches. To enroll a real 
 project with path `../services/<repository>`, its Pipesor HTTPS URL and a `services`
 tag. This requires a reviewed manifest change; directory discovery is not automatic.
 
-## Shared Java CI components
+## Shared CI
 
-[`actions/java-verify`](actions/java-verify/action.yml) runs
-`./mvnw -B -ntp clean verify` in the caller's checkout and always attempts to
-retain Surefire XML reports as `tests-<run>-<attempt>` for 14 days. The caller
-owns checkout, JDK setup/cache, service-specific validation and image build/smoke
-checks. The composite has no inputs, secrets or custom command interface.
-It skips artifact upload under `act` (`ACT=true`); local execution does not prove
-GitHub artifact, permission or registry behavior.
-
-[`publish-container.yml`](.github/workflows/publish-container.yml) is a reusable
-workflow with no inputs or inherited secrets. A caller job must depend on its
-successful verification/image job and grant only `contents: read` and
-`packages: write`. The caller archives its tested image as `service-image.tar`
-and `service-image.tar.sha256` in the same run's
-`image-<run>-<attempt>` artifact. The expected image is
-`ghcr.io/<lowercase-caller-repository>:sha-<source-sha>-<run>-<attempt>`.
-The publisher accepts only push/main outside act, checks the exact archive
-checksum and source revision label, loads and publishes without checkout or
-rebuild, using the caller's own `GITHUB_TOKEN`. Registry logout runs even after
-failure. The resulting `candidate-<run>-<attempt>` artifact retains the unchanged
-schema-version-1 `candidate.json` for 90 days: source SHA, repository image,
-published digest, original run ID and attempt. No deployment or release is added.
-
-Consumers must pin both component references to a reviewed, published full commit
-SHA of this repository, updating that SHA explicitly when adopting changes. A
-local commit or worktree is not available to GitHub runners until publication.
-Private reusable workflow/action access is currently disabled; the organization-wide private-repository Access policy must be explicitly
-authorized before hosted adoption, and callers must allow these components.
-This setting is not a per-consumer allowlist; review indirect collaborator
-access to the shared repository before enabling it. This
-change does not alter repository access settings, tokens, secrets or permissions
-outside the workflow job. Neither the components nor simulated tests establish
-that private access, artifacts or GHCR publication work on hosted runners.
-
-These CI components are separate from synchronization. The sync utility still
-does not push, publish, deploy or modify automation/access settings.
+The shared Java automation that lived here (`actions/java-verify` and
+`publish-container.yml`) moved to [pipesor-ci](https://github.com/pipesor-org/pipesor-ci),
+which now owns the reusable conventions, container build, image assurance,
+publication and release components for every repository. Existing consumers
+pinned to an earlier workspace commit keep resolving that commit; new changes go
+to pipesor-ci.
 
 ## Local runtime stack
 
