@@ -21,6 +21,10 @@
       "path": "../pipesor-iac"
     },
     {
+      "name": "Validation Scenarios",
+      "path": "../pipesor-validation-scenarios"
+    },
+    {
       "name": "Workspace",
       "path": "."
     },

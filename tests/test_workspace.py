@@ -82,6 +82,22 @@ class SyncTests(unittest.TestCase):
             yield
         self.assertEqual(self.checkout_state(), before)
 
+    def kept_in_place(self, reason, apply=True):
+        def state():
+            head, refs, *rest = self.checkout_state()
+            refs = '\n'.join(line for line in refs.splitlines() if not line.startswith('refs/heads/main '))
+            return (head, refs, *rest)
+        before = state()
+        output = StringIO()
+        with redirect_stdout(output):
+            w.sync(self.path, self.url, apply)
+        self.assertRegex(output.getvalue(), 'Kept feature/example.*' + reason)
+        self.assertEqual(state(), before)
+        if apply:
+            self.assertIn('Updated main:', output.getvalue())
+            self.assertEqual(self.git('rev-parse', 'main'), self.squash)
+        return output.getvalue()
+
     def commit(self, text):
         (self.path / text).write_text(text)
         self.git('add', text)
@@ -133,8 +149,11 @@ class SyncTests(unittest.TestCase):
         self.assertIn('Would delete docs/example', output.getvalue())
         self.assertEqual(self.checkout_state(), before)
         self.pr['head']['sha'] = self.base
-        with self.rejected_without_changes('no verified merged PR'):
-            w.sync(self.path, self.url, True)
+        self.git('branch', '-m', 'docs/example', 'feature/example')
+        self.api_branch = 'feature/example'
+        self.kept_in_place('no verified merged PR')
+        self.git('branch', '-m', 'feature/example', 'docs/example')
+        self.api_branch = 'docs/example'
         self.pr['head']['sha'] = self.head
         with redirect_stdout(output):
             self.assertTrue(w.sync(self.path, self.url, True))
@@ -189,13 +208,11 @@ class SyncTests(unittest.TestCase):
 
     def test_unpushed_commit_keeps_active_branch(self):
         self.commit('extra')
-        with self.rejected_without_changes('no verified merged PR'):
-            w.sync(self.path, self.url, True)
+        self.kept_in_place('no verified merged PR')
 
     def test_closed_without_merge_is_preserved(self):
         self.pr['merged_at'] = None
-        with self.rejected_without_changes('no verified merged PR'):
-            w.sync(self.path, self.url, True)
+        self.kept_in_place('no verified merged PR')
 
     def test_dirty_checkout_is_preserved(self):
         for kind in ('untracked', 'staged', 'unstaged'):
@@ -204,8 +221,8 @@ class SyncTests(unittest.TestCase):
                 file.write_text('precious ' + kind)
                 if kind == 'staged':
                     self.git('add', 'base')
-                with self.rejected_without_changes('Uncommitted'):
-                    w.sync(self.path, self.url, True)
+                self.git('update-ref', 'refs/heads/main', self.base)
+                self.kept_in_place(r'verified merged PR #1\): uncommitted or untracked work')
                 if kind == 'untracked':
                     file.unlink()
                 else:
@@ -223,10 +240,88 @@ class SyncTests(unittest.TestCase):
         w.sync(self.path, self.url, True)
         self.assertIn('feature/example', self.git('branch'))
 
+    def test_merged_worktree_is_reported_without_flag(self):
+        self.git('switch', 'main')
+        worktree = self.root / 'worktree'
+        self.git('worktree', 'add', str(worktree), 'feature/example')
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url, True))
+        self.assertIn('rerun with --prune-worktrees', output.getvalue())
+        self.assertIn('Updated main:', output.getvalue())
+        self.assertTrue(worktree.is_dir())
+        self.assertEqual(self.git('rev-parse', 'feature/example'), self.head)
+
+    def test_prune_worktrees_removes_clean_merged_worktree(self):
+        self.git('switch', 'main')
+        worktree = self.root / 'worktree'
+        self.git('worktree', 'add', str(worktree), 'feature/example')
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url, False, True))
+        self.assertIn(f'Would remove worktree {worktree}', output.getvalue())
+        self.assertTrue(worktree.is_dir())
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url, True, True))
+        self.assertIn(f'Removed worktree {worktree}', output.getvalue())
+        self.assertIn('Deleted feature/example', output.getvalue())
+        self.assertFalse(worktree.exists())
+        self.assertNotIn('feature/example', self.git('branch'))
+        self.assertEqual(self.git('rev-parse', 'main'), self.squash)
+
+    def test_prune_worktrees_keeps_dirty_or_locked_worktree(self):
+        self.git('switch', 'main')
+        worktree = self.root / 'worktree'
+        self.git('worktree', 'add', str(worktree), 'feature/example')
+        for kind in ('untracked', 'locked'):
+            with self.subTest(kind=kind):
+                if kind == 'untracked':
+                    (worktree / 'notes').write_text('precious')
+                    reason = 'untracked work'
+                else:
+                    (worktree / 'notes').unlink()
+                    self.git('worktree', 'lock', str(worktree))
+                    reason = 'is locked'
+                output = StringIO()
+                with redirect_stdout(output):
+                    w.sync(self.path, self.url, True, True)
+                self.assertIn(reason, output.getvalue())
+                self.assertTrue(worktree.is_dir())
+                self.assertEqual(self.git('rev-parse', 'feature/example'), self.head)
+        self.assertEqual(self.git('rev-parse', 'main'), self.squash)
+
+    def test_main_in_linked_worktree_is_fast_forwarded_there(self):
+        worktree = self.root / 'main-worktree'
+        self.git('worktree', 'add', str(worktree), 'main')
+        output = StringIO()
+        with redirect_stdout(output):
+            w.sync(self.path, self.url, True)
+        self.assertIn('main is checked out in', output.getvalue())
+        self.assertEqual(self.git('rev-parse', 'HEAD', path=worktree), self.squash)
+        self.assertEqual(self.git('status', '--porcelain', path=worktree), '')
+        self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
+
+    def test_dirty_main_worktree_keeps_main_but_cleans_branches(self):
+        self.git('switch', 'main')
+        (self.path / 'draft').write_text('precious')
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertTrue(w.sync(self.path, self.url, True))
+        self.assertIn('Kept main at', output.getvalue())
+        self.assertIn('Deleted feature/example', output.getvalue())
+        self.assertEqual(self.git('rev-parse', 'main'), self.base)
+        self.assertEqual((self.path / 'draft').read_text(), 'precious')
+
+    def test_linked_worktree_path_is_rejected(self):
+        self.git('switch', 'main')
+        worktree = self.root / 'worktree'
+        self.git('worktree', 'add', str(worktree), 'feature/example')
+        with self.assertRaisesRegex(RuntimeError, 'root of a standalone checkout'):
+            w.sync(worktree, self.url)
+
     def test_missing_squash_on_main_is_preserved(self):
         self.pr['merge_commit_sha'] = self.head
-        with self.rejected_without_changes('no verified merged PR'):
-            w.sync(self.path, self.url, True)
+        self.kept_in_place('no verified merged PR')
 
     def test_wrong_remote_is_preserved(self):
         with self.rejected_without_changes('origin does not match'):
@@ -262,8 +357,8 @@ class SyncTests(unittest.TestCase):
                     self.pr['base']['ref'] = value
                 else:
                     self.pr[field.split('_')[0]]['repo'] = {'full_name': value} if value else None
-                with self.rejected_without_changes('no verified merged PR'):
-                    w.sync(self.path, self.url, True)
+                self.git('update-ref', 'refs/heads/main', self.base)
+                self.kept_in_place('no verified merged PR')
 
     def test_fetch_failure_keeps_checkout(self):
         original = w.run
@@ -279,8 +374,7 @@ class SyncTests(unittest.TestCase):
         # A merge can be pending even when its index and working tree are clean.
         marker = self.path / '.git' / 'MERGE_HEAD'
         marker.write_text(self.head + '\n')
-        with self.rejected_without_changes('Git operation in progress'):
-            w.sync(self.path, self.url, True)
+        self.kept_in_place('Git operation in progress')
         self.assertEqual(marker.read_text(), self.head + '\n')
 
     def test_changes_during_inspection_are_preserved(self):
@@ -407,13 +501,14 @@ class InventoryTests(unittest.TestCase):
                     git.assert_called_once_with(expected, 'status', '--porcelain=v1', '--branch')
                     sync.assert_not_called()
                 else:
-                    sync.assert_called_once_with(expected, url, True)
+                    sync.assert_called_once_with(expected, url, True, False)
                     git.assert_not_called()
 
     def test_invalid_cli_cannot_start_work(self):
         self.write_manifest({'example': {'path': '../example',
                             'url': 'https://github.com/pipesor-org/example.git'}})
-        for arguments in (['sync', '--project', 'unknown'], ['status', '--apply'], ['doctor', '--apply']):
+        for arguments in (['sync', '--project', 'unknown'], ['status', '--apply'], ['doctor', '--apply'],
+                          ['status', '--prune-worktrees']):
             with self.subTest(arguments=arguments), patch.object(w, 'ROOT', self.root), \
                     patch.object(w.sys, 'argv', ['workspace.py', *arguments]), \
                     patch.object(w, 'git') as git, patch.object(w, 'sync') as sync, \
