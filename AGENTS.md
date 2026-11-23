@@ -12,8 +12,11 @@ JSON-compatible YAML format so no YAML runtime dependency is needed.
 Shared CI lives in https://github.com/pipesor-org/pipesor-ci; do not add reusable
 workflows or actions here.
 
-Sync previews by default. Never reset, stash, push, merge PRs, deploy, or delete
-worktrees through the synchronization utility. Delete local branches only with
-exact merged-PR head evidence and a reachable squash commit, regardless of name.
+Sync previews by default. Never reset, stash, push, merge PRs or deploy through the
+synchronization utility. Delete local branches only with exact merged-PR head
+evidence and a reachable squash commit, regardless of name. Remove a linked
+worktree only behind the opt-in --prune-worktrees flag, for such a verified branch,
+when the worktree is clean, unlocked and idle; never force removal. A blocked step
+must be reported as kept and must not stop the safe steps of the same repository.
 Read each sibling repository's own instructions before touching it. Do not write
 user/global Codex or Git configuration. Do not silently enroll services or docs.

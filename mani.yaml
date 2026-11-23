@@ -42,6 +42,13 @@
         "docs"
       ]
     },
+    "pipesor-validation-scenarios": {
+      "path": "../pipesor-validation-scenarios",
+      "url": "https://github.com/pipesor-org/pipesor-validation-scenarios.git",
+      "tags": [
+        "research"
+      ]
+    },
     "pipesor-evidence-correlation-engine": {
       "path": "../services/pipesor-evidence-correlation-engine",
       "url": "https://github.com/pipesor-org/pipesor-evidence-correlation-engine.git",

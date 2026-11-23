@@ -21,6 +21,14 @@
       "path": "../pipesor-iac"
     },
     {
+      "name": "Shared CI",
+      "path": "../pipesor-ci"
+    },
+    {
+      "name": "Validation Scenarios",
+      "path": "../pipesor-validation-scenarios"
+    },
+    {
       "name": "Workspace",
       "path": "."
     },
