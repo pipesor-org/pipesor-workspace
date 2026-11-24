@@ -62,7 +62,7 @@ class LocalStackTests(unittest.TestCase):
         self.assertEqual(callers, {
             "correlation": "Correlation.OperationalReferences.Check",
             "log-event": "Evidence.Check",
-            "recommendation": "Recommendation.DiagnosisEntitlements.Resolve",
+            "recommendation": "Recommendation.DiagnosisEntitlements.Resolve,Recommendation.DiagnosisSummaries.Write",
         })
         self.assertNotIn("PIPESOR_SECURITY_TRUSTEDWORKLOADS_0_ID", env((self.home / "env/nlp.env").read_text()))
 
