@@ -107,6 +107,7 @@ python3 tools/workspace.py sync --project pipesor-iac  # preview one repo
 python3 tools/workspace.py sync --apply                # apply local changes
 python3 tools/workspace.py sync --prune-worktrees      # preview, including merged worktrees
 python3 tools/workspace.py sync --apply --prune-worktrees
+python3 tools/workspace.py sync --apply --prune-worktrees --include-workspace  # everything
 python3 tools/workspace.py status                      # inspect local status
 ```
 
@@ -126,8 +127,14 @@ changed files. Clean describes only the working tree: it does not prove that a
 branch is synchronized with GitHub. `--project` limits the report to one repository.
 
 Sync labels preview versus apply at the start. Preview uses “Would switch/update/
-remove/delete”; apply reports actions only after they succeed. Anything sync leaves
-in place is printed as “Kept …” with its reason. Each run ends with counts of
+remove/delete”; apply reports actions only after they succeed. A repository is
+listed by name only when it has something to report; repositories already up to
+date with nothing kept are grouped on one “Up to date, nothing kept” line. Anything
+sync leaves in place is printed as “Kept …” with its reason; for a branch without
+merge evidence the reason says whether it has an open PR, a merged PR with a
+different head, a PR closed without merge or no PR, how many commits it has that
+are not in `origin/main`, and whether it is local only, the same as origin or
+different from origin. Each run ends with counts of
 repositories with planned/completed changes, unchanged repositories, and
 skipped/failed repositories. A failed apply can be partial: completed actions stay
 in place and are listed above the failure; there is no automatic rollback. Inspect
@@ -167,23 +174,24 @@ merge status are understood; then rerun the preview.
 
 Deletion prints the branch SHA and PR number. Expected-SHA ref updates reject a
 branch or `main` modified since inspection, and each worktree is re-checked right
-before removal. Run while the selected repositories are idle; Git cannot make this
+before removal. On Linux and WSL, sync prints a warning (it does not block) when
+another process, such as an editor, shell or coding agent, has its working
+directory inside a checkout it is about to switch, fast-forward or remove; this
+script and the shell that started it are excluded. Run while the selected repositories are idle; Git cannot make this
 whole inspection-and-update sequence atomic against editors and other Git clients.
 No reset, stash, push, PR merge or forced worktree removal occurs.
 GitHub availability is required for cleanup. Fetch failure or insufficient evidence
 keeps branches. A merged PR proves integration, not semantic equivalence after
 conflict resolution or a later revert. Main CI is a separate quality signal.
 
-This workspace repository is not in the inventory and does not synchronize itself.
-To update it separately, first inspect `git status` and ensure that switching
-branches will not discard or overwrite your work, then run:
+This workspace repository is not in the inventory. Add `--include-workspace` to
+sync it too, with the same rules, after the inventory repositories; run the command
+from the primary checkout (not a linked worktree) so the inventory paths resolve.
+Without the flag, update it separately: first inspect `git status` and ensure that
+switching branches will not discard or overwrite your work, then run
+`git switch main` and `git pull --ff-only`, which do not clean up local branches.
 
-```sh
-git switch main
-git pull --ff-only
-```
-
-These commands do not clean up the workspace's local branches. To enroll a real microservice, add an explicit
+To enroll a real microservice, add an explicit
 project with path `../services/<repository>`, its Pipesor HTTPS URL and a `services`
 tag. This requires a reviewed manifest change; directory discovery is not automatic.
 

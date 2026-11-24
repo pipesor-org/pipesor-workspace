@@ -54,7 +54,7 @@ class SyncTests(unittest.TestCase):
                 if 'head=pipesor-org:docs/keep' in args:
                     return json.dumps([[]])
                 self.assertEqual(args, ('gh', 'api', '--method', 'GET', '--paginate', '--slurp',
-                    'repos/pipesor-org/example/pulls', '-f', 'state=closed', '-f', 'base=main',
+                    'repos/pipesor-org/example/pulls', '-f', 'state=all', '-f', 'base=main',
                     '-f', f'head=pipesor-org:{self.api_branch}', '-f', 'per_page=100'))
                 return json.dumps(self.pages)
             if args[:3] == ('git', 'fetch', '--prune'):
@@ -121,9 +121,39 @@ class SyncTests(unittest.TestCase):
         config = self.git('config', '--local', '--list')
         self.assertNotIn('branch.feature/example.', config)
         self.assertIn('branch.docs/keep.remote=origin', config)
+        output = StringIO()
         with redirect_stdout(output):
             self.assertFalse(w.sync(self.path, self.url, True))
-        self.assertIn('Unchanged:', output.getvalue())
+        self.assertEqual(output.getvalue().splitlines(), [
+            '  Kept docs/keep: no verified merged PR (no PR; 1 commit not in origin/main; local only)'])
+
+    def test_kept_branch_detail_explains_pr_and_remote_state(self):
+        self.commit('extra')
+        sha = self.git('rev-parse', 'HEAD')
+        open_pr = {'number': 7, 'state': 'open', 'merged_at': None}
+        for prs, remote, expected in (
+            ([open_pr], None, 'open PR #7; 2 commits not in origin/main; local only'),
+            ([self.pr], sha, 'merged PR #1 has a different head or its squash is not on main; '
+                             '2 commits not in origin/main; same as origin'),
+            ([{'number': 3, 'state': 'closed', 'merged_at': None}], self.head,
+             'PR closed without merge; 2 commits not in origin/main; differs from origin'),
+        ):
+            with self.subTest(expected=expected):
+                if remote:
+                    self.git('update-ref', 'refs/remotes/origin/feature/example', remote)
+                target = self.git('rev-parse', 'origin/main')
+                self.assertEqual(w.kept_detail(self.path, 'feature/example', sha, target, prs), expected)
+
+    def test_processes_in_a_checkout_to_switch_are_reported(self):
+        sleeper = subprocess.Popen(['sleep', '30'], cwd=self.path)
+        self.addCleanup(sleeper.wait)
+        self.addCleanup(sleeper.kill)
+        output = StringIO()
+        with redirect_stdout(output):
+            w.sync(self.path, self.url)
+        if Path('/proc').is_dir():
+            self.assertIn(f'Warning: sleep ({sleeper.pid}) working in {self.path}', output.getvalue())
+        self.assertEqual(self.git('branch', '--show-current'), 'feature/example')
 
     def test_preview_keeps_branches(self):
         before = self.checkout_state()
@@ -448,6 +478,29 @@ class SyncReportTests(unittest.TestCase):
         self.assertNotIn('Apply may be partial', report)
 
 
+class SyncReportGroupingTests(unittest.TestCase):
+    def test_quiet_repositories_are_grouped_and_workspace_comes_last(self):
+        selected = [(name, Path(name), '') for name in ('quiet', 'kept', 'changed')]
+        def fake_sync(path, url, apply, prune, out):
+            if path.name == 'kept':
+                out('  Kept topic: no verified merged PR (no PR)')
+            return path.name == 'changed' or url == w.WORKSPACE_URL
+        for flags, workspace in (([], False), (['--include-workspace'], True)):
+            output = StringIO()
+            with self.subTest(flags=flags), patch.object(w.sys, 'argv', ['workspace.py', 'sync', *flags]), \
+                    patch.object(w, 'projects', return_value=list(selected)), \
+                    patch.object(w, 'sync', side_effect=fake_sync) as sync, redirect_stdout(output):
+                self.assertEqual(w.main(), 0)
+            report = output.getvalue()
+            self.assertIn('kept\n  Kept topic', report)
+            self.assertNotIn('\nquiet\n', report)
+            self.assertIn('Up to date, nothing kept (1): quiet', report)
+            changed = 2 if workspace else 1
+            self.assertIn(f'repositories: {changed} with planned changes, 2 unchanged', report)
+            last = sync.call_args_list[-1].args
+            self.assertEqual(last[:2] == (w.ROOT, w.WORKSPACE_URL), workspace)
+
+
 class InventoryTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -501,14 +554,14 @@ class InventoryTests(unittest.TestCase):
                     git.assert_called_once_with(expected, 'status', '--porcelain=v1', '--branch')
                     sync.assert_not_called()
                 else:
-                    sync.assert_called_once_with(expected, url, True, False)
+                    self.assertEqual(sync.call_args.args[:4], (expected, url, True, False))
                     git.assert_not_called()
 
     def test_invalid_cli_cannot_start_work(self):
         self.write_manifest({'example': {'path': '../example',
                             'url': 'https://github.com/pipesor-org/example.git'}})
         for arguments in (['sync', '--project', 'unknown'], ['status', '--apply'], ['doctor', '--apply'],
-                          ['status', '--prune-worktrees']):
+                          ['status', '--prune-worktrees'], ['doctor', '--include-workspace']):
             with self.subTest(arguments=arguments), patch.object(w, 'ROOT', self.root), \
                     patch.object(w.sys, 'argv', ['workspace.py', *arguments]), \
                     patch.object(w, 'git') as git, patch.object(w, 'sync') as sync, \
