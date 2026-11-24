@@ -32,7 +32,7 @@ TRUST = {
     "pipeline": {
         "correlation": ["Correlation.OperationalReferences.Check"],
         "log-event": ["Evidence.Check"],
-        "recommendation": ["Recommendation.DiagnosisEntitlements.Resolve"],
+        "recommendation": ["Recommendation.DiagnosisEntitlements.Resolve", "Recommendation.DiagnosisSummaries.Write"],
     },
     "log-event": {"correlation": ["Correlation.EvidenceMembership.Check"]},
     "correlation": {"nlp": ["Nlp.ProcessedEvidence.Send"]},
