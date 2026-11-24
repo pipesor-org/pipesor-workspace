@@ -1,12 +1,14 @@
 """Explicit workspace inspection and conservative synchronization; standard library only."""
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_URL = 'https://github.com/pipesor-org/pipesor-workspace.git'
 
 
 def run(path, *args):
@@ -72,11 +74,15 @@ def blocker(path):
     return None
 
 
-def merged_pr(path, repository, branch, sha, target):
-    prs = json.loads(run(path, 'gh', 'api', '--method', 'GET', '--paginate', '--slurp',
-        f'repos/{repository}/pulls', '-f', 'state=closed', '-f', 'base=main',
+def pull_requests(path, repository, branch):
+    pages = json.loads(run(path, 'gh', 'api', '--method', 'GET', '--paginate', '--slurp',
+        f'repos/{repository}/pulls', '-f', 'state=all', '-f', 'base=main',
         '-f', f'head=pipesor-org:{branch}', '-f', 'per_page=100'))
-    for pr in (pr for page in prs for pr in page):
+    return [pr for page in pages for pr in page]
+
+
+def merged_pr(path, repository, sha, target, prs):
+    for pr in prs:
         if (pr.get('merged_at') and pr['head']['sha'] == sha
                 and pr['head']['repo'] and pr['head']['repo']['full_name'] == repository
                 and pr['base']['repo']['full_name'] == repository
@@ -86,9 +92,64 @@ def merged_pr(path, repository, branch, sha, target):
     return None
 
 
-def sync(path, url, apply=False, prune_worktrees=False):
+def kept_detail(path, branch, sha, target, prs):
+    """Explain why a branch without verified merge evidence stays, so it can be acted on."""
+    facts = []
+    open_prs = [pr['number'] for pr in prs if pr.get('state') == 'open']
+    merged = [pr['number'] for pr in prs if pr.get('merged_at')]
+    if open_prs:
+        facts.append('open PR ' + ', '.join(f'#{number}' for number in open_prs))
+    elif merged:
+        facts.append('merged PR ' + ', '.join(f'#{number}' for number in merged)
+                     + ' has a different head or its squash is not on main')
+    elif prs:
+        facts.append('PR closed without merge')
+    else:
+        facts.append('no PR')
+    ahead = int(git(path, 'rev-list', '--count', f'{target}..{sha}'))
+    facts.append(f'{ahead} commit{"" if ahead == 1 else "s"} not in origin/main')
+    remote = subprocess.run(['git', 'rev-parse', '--verify', '--quiet', f'refs/remotes/origin/{branch}'],
+                            cwd=path, text=True, capture_output=True)
+    if remote.returncode:
+        facts.append('local only')
+    elif remote.stdout.strip() == sha:
+        facts.append('same as origin')
+    else:
+        facts.append('differs from origin')
+    return '; '.join(facts)
+
+
+def occupants(path):
+    """Other processes whose working directory is inside path (Linux /proc only; else none)."""
+    proc = Path('/proc')
+    if not proc.is_dir():
+        return []
+    own, pid = set(), os.getpid()
+    while pid > 1 and pid not in own:  # Skip this script and the shell that started it.
+        own.add(pid)
+        try:
+            pid = int((proc / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    found = []
+    for entry in proc.iterdir():
+        if not entry.name.isdigit() or int(entry.name) in own:
+            continue
+        try:
+            cwd = Path(os.readlink(entry / 'cwd'))
+            name = (entry / 'comm').read_text().strip()
+        except OSError:
+            continue
+        if cwd == path or path in cwd.parents:
+            found.append(f'{name} ({entry.name})')
+    return sorted(found)
+
+
+def sync(path, url, apply=False, prune_worktrees=False, out=None):
     """Plan, and optionally apply, each step independently: a blocked step is reported
-    as kept with its reason and never prevents the safe steps of the same repository."""
+    as kept with its reason and never prevents the safe steps of the same repository.
+    Lines go to out (default print); an unchanged repository with nothing kept is silent."""
+    out = out or (lambda line: print(line, flush=True))
     path = Path(path)
     common = git(path, 'rev-parse', '--path-format=absolute', '--git-common-dir')
     own = git(path, 'rev-parse', '--path-format=absolute', '--git-dir')
@@ -115,11 +176,13 @@ def sync(path, url, apply=False, prune_worktrees=False):
         branch, sha = line.split()
         if branch == 'main':
             continue
-        number = merged_pr(path, repository, branch, sha, target)
+        prs = pull_requests(path, repository, branch)
+        number = merged_pr(path, repository, sha, target, prs)
         holder = holders.get(branch)
         if number is None:
             where = '' if holder is None else f' (checked out in {holder["path"]})'
-            kept.append(f'Kept {branch}{where}: no verified merged PR')
+            kept.append(f'Kept {branch}{where}: no verified merged PR '
+                        f'({kept_detail(path, branch, sha, target, prs)})')
             continue
         reason = None
         if holder is primary:
@@ -152,26 +215,34 @@ def sync(path, url, apply=False, prune_worktrees=False):
         else:
             update_main = True
     changed = bool(switch or update_main or deletions)
-    if not changed:
-        print('  Unchanged: main matches the fetched remote commit and nothing is ready to clean.')
+    touched = [tree for tree, *_ in removals]
+    if switch:
+        touched.append(primary['path'])
+    if update_main and not switch and holders.get('main'):
+        touched.append(holders['main']['path'])
+    for tree in touched:
+        found = occupants(tree.resolve())
+        if found:
+            out(f'  Warning: {", ".join(found)} working in {tree}; '
+                'close or move them if a branch switch or removal would surprise them')
     if not apply:
         if switch:
-            print(f'  Would switch {switch} -> main')
+            out(f'  Would switch {switch} -> main')
         if update_main:
-            print(f'  Would update main: {main[:8]} -> {target[:8]} (fast-forward)')
+            out(f'  Would update main: {main[:8]} -> {target[:8]} (fast-forward)')
         for tree, branch, sha, number in removals:
-            print(f'  Would remove worktree {tree} ({branch}, verified merged PR #{number})')
+            out(f'  Would remove worktree {tree} ({branch}, verified merged PR #{number})')
         for branch, sha, number in deletions:
-            print(f'  Would delete {branch} at {sha} (verified merged PR #{number})')
+            out(f'  Would delete {branch} at {sha} (verified merged PR #{number})')
     for note in kept:
-        print('  ' + note)
+        out('  ' + note)
     if not apply:
         return changed
     if git(path, 'status', '--porcelain') != primary_state or git(path, 'rev-parse', 'refs/heads/main') != main:
         raise RuntimeError('Local state changed during inspection')
     if switch:
         git(path, 'switch', 'main')
-        print(f'  Switched {switch} -> main', flush=True)
+        out(f'  Switched {switch} -> main')
     if update_main:
         holder = {tree['branch']: tree for tree in worktrees(path)}.get('main')
         if holder is None:
@@ -181,7 +252,7 @@ def sync(path, url, apply=False, prune_worktrees=False):
             if blocker(holder['path']):
                 raise RuntimeError(f'{holder["path"]} changed during inspection; main not updated')
             git(holder['path'], 'merge', '--ff-only', target)
-        print(f'  Updated main: {main[:8]} -> {target[:8]}', flush=True)
+        out(f'  Updated main: {main[:8]} -> {target[:8]}')
     for tree, branch, sha, number in removals:
         current = next((item for item in worktrees(path) if item['path'] == tree), None)
         if (current is None or current['branch'] != branch or current['locked']
@@ -189,13 +260,13 @@ def sync(path, url, apply=False, prune_worktrees=False):
             raise RuntimeError(f'Worktree {tree} changed during inspection; cleanup stopped')
         # Without --force, Git itself refuses dirty or locked worktrees; ignored files go.
         git(path, 'worktree', 'remove', str(tree))
-        print(f'  Removed worktree {tree} ({branch}, verified merged PR #{number})', flush=True)
+        out(f'  Removed worktree {tree} ({branch}, verified merged PR #{number})')
     for branch, sha, number in deletions:
         if 'branch refs/heads/' + branch in git(path, 'worktree', 'list', '--porcelain').splitlines():
             raise RuntimeError('Branch is now in use by a worktree; cleanup stopped')
         # Expected old SHA prevents deleting a branch changed after inspection.
         git(path, 'update-ref', '-d', 'refs/heads/' + branch, sha)
-        print(f'  Deleted {branch} at {sha} (verified merged PR #{number})', flush=True)
+        out(f'  Deleted {branch} at {sha} (verified merged PR #{number})')
         config = subprocess.run(['git', 'config', '--local', '--get-regexp', '^branch[.]'], cwd=path, text=True, capture_output=True)
         if config.returncode not in (0, 1):
             raise RuntimeError('Unable to inspect branch tracking configuration')
@@ -241,11 +312,14 @@ def main():
     parser.add_argument('--project', help='select one inventory project')
     parser.add_argument('--prune-worktrees', action='store_true',
                         help='also remove clean linked worktrees whose branch has a verified merged PR')
+    parser.add_argument('--include-workspace', action='store_true',
+                        help='also sync this pipesor-workspace checkout, after the inventory')
     args = parser.parse_args()
     if args.apply and args.command != 'sync':
         parser.error('--apply is only valid for sync')
-    if args.prune_worktrees and args.command != 'sync':
-        parser.error('--prune-worktrees is only valid for sync')
+    for flag in ('prune_worktrees', 'include_workspace'):
+        if getattr(args, flag) and args.command != 'sync':
+            parser.error(f'--{flag.replace("_", "-")} is only valid for sync')
     if args.command == 'doctor':
         missing = False
         print('Workspace doctor: tool availability and GitHub access')
@@ -276,6 +350,9 @@ def main():
         print('For authentication failures, run gh auth login. Repository permissions are checked during sync.')
         return int(missing)
     selected = list(projects(ROOT / 'mani.yaml'))
+    if args.include_workspace:
+        # Last, so the inventory is processed by the code that started this run.
+        selected.append(('pipesor-workspace', ROOT, WORKSPACE_URL))
     if args.project:
         selected = [item for item in selected if item[0] == args.project]
         if not selected:
@@ -289,24 +366,34 @@ def main():
           'kept and reported (use --prune-worktrees to remove clean ones).\n'))
     failures = 0
     changed = 0
-    unchanged = 0
+    quiet = []
     for name, path, url in selected:
-        print(name, flush=True)
+        header = [name]
+        def out(line):
+            if header:
+                print(header.pop(), flush=True)
+            print(line, flush=True)
         try:
-            if sync(path, url, args.apply, args.prune_worktrees):
+            if sync(path, url, args.apply, args.prune_worktrees, out):
                 changed += 1
+            elif header:
+                quiet.append(name)
             else:
-                unchanged += 1
+                out('  Unchanged: main matches the fetched remote commit; nothing to clean.')
         except (RuntimeError, OSError, ValueError) as error:
-            print(f'  SKIPPED/FAILED: {error}')
-            print(f'  Inspect with git -C "{path}" status; preserve work and resolve the reason before retrying.')
+            out(f'  SKIPPED/FAILED: {error}')
+            out(f'  Inspect with git -C "{path}" status; preserve work and resolve the reason before retrying.')
             if args.apply:
-                print('  Apply may be partial: completed actions above remain; nothing was rolled back.')
+                out('  Apply may be partial: completed actions above remain; nothing was rolled back.')
             failures += 1
+    unchanged = len(selected) - changed - failures
+    if quiet:
+        print(f'\nUp to date, nothing kept ({len(quiet)}): ' + ', '.join(quiet))
     action = 'changed' if args.apply else 'with planned changes'
     print(f'\n{len(selected)} repositories: {changed} {action}, {unchanged} unchanged, {failures} skipped/failed.')
     if not args.apply and changed:
-        print('Review the plan, then rerun sync with --apply (and the same --project filter, if used).')
+        print('Review the plan, then rerun sync with --apply (and the same --project, --prune-worktrees\n'
+              'and --include-workspace options, if used).')
     return int(bool(failures))
 
 
